@@ -108,6 +108,8 @@ function normalizeFlight_(input) {
   f.arr = String(f.arr || '').trim().toUpperCase();
   f.flight_no = String(f.flight_no || '').trim();
   f.remarks = String(f.remarks || '').trim();
+  f.crew = String(f.crew || '').trim().toUpperCase();
+  if (f.crew && !/^([NMD]\d+\/\d+|SPLIT|SIM)$/.test(f.crew)) throw new Error('編成コードの形式が不正です: ' + f.crew);
   f.dep_time = parseClock_(f.dep_time);
   f.arr_time = parseClock_(f.arr_time);
   f.takeoffs = Number(f.takeoffs) || 0;

@@ -71,6 +71,7 @@ function repairFlightsSheetFormats() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    ensureFlightsHeader_(sh);
     // Whole-column text format so future manual edits are safe too.
     sh.getRange(2, colIndex_('date') + 1, sh.getMaxRows() - 1, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
     sh.getRange(2, colIndex_('remarks') + 1, sh.getMaxRows() - 1, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');

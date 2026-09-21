@@ -56,5 +56,13 @@
   .kpi div { background: #f8f9fa; border-radius: 6px; padding: 8px 10px; }
   .kpi label { margin: 0; }
   .kpi b { font-size: 18px; font-family: "SF Mono", Consolas, monospace; }
+  .tag { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #e8eaed; color: #3c4043; font-family: "SF Mono", Consolas, monospace; }
+  .q { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .q div.item { border-radius: 6px; padding: 8px 10px; border-left: 4px solid #9aa0a6; background: #f8f9fa; }
+  .q .item.ok { border-left-color: var(--ok); }
+  .q .item.due, .q .item.warn { border-left-color: var(--warn); background: #fef7e0; }
+  .q .item.over { border-left-color: var(--err); background: #fce8e6; }
+  .q .item b { font-size: 15px; }
+  .q .item .sub { font-size: 11px; color: var(--muted); }
   @media (max-width: 640px) { main { padding: 10px; } .card { padding: 10px; } }
 </style>

@@ -1,6 +1,6 @@
 <script>
 /* ---------- state ---------- */
-var S = { boot: null, role: 'pic', editing: null, listMonth: null };
+var S = { boot: null, role: 'N', pattern: 'N1', member: 0, editing: null, listMonth: null };
 var TOTAL_KEYS, COLS = {}, DUR_KEYS = [];
 var $ = function (sel) { return document.querySelector(sel); };
 var $$ = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
@@ -47,6 +47,12 @@ function roleOf(f) {
   if (f.sic || f.solo_sic || f.pus) return 'sic';
   return '';
 }
+/** Crew code for the current form selection: "M2/0", "SPLIT", "SIM". */
+function crewCode() {
+  if (S.role === 'split') return 'SPLIT';
+  if (S.role === 'sim') return 'SIM';
+  return S.pattern + '/' + S.member;
+}
 
 /* ---------- boot ---------- */
 window.addEventListener('DOMContentLoaded', function () {
@@ -84,7 +90,7 @@ function showTab(name) {
   $$('nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === name); });
   $$('.tab').forEach(function (t) { t.classList.toggle('active', t.id === 'tab-' + name); });
   if (name === 'list') loadMonth($('#listMonth').value);
-  if (name === 'summary') { fillYears(); loadSummary(); loadRecency(); }
+  if (name === 'summary') { fillYears(); loadSummary(); loadRecency(); loadQualification(); }
   if (name === 'settings') loadReports();
 }
 
@@ -130,8 +136,10 @@ function bindForm() {
     f.elements[k].addEventListener('change', function () { recalcBlock(false); });
     f.elements[k].addEventListener('input', function () { recalcBlock(true); });
   });
-  f.elements.block.addEventListener('change', applyRole);
+  f.elements._actual.addEventListener('change', applyRole);
   f.elements._night.addEventListener('change', applyRole);
+  $('#crewPattern').addEventListener('change', function () { S.pattern = this.value; fillMembers(); applyRole(); });
+  $('#crewMember').addEventListener('change', function () { S.member = Number(this.value); applyRole(); });
   f.elements._split_pic.addEventListener('change', applyRole);
   f.elements._xc.addEventListener('change', applyRole);
   $$('#roleSeg button').forEach(function (b) {
@@ -156,41 +164,77 @@ function recalcBlock(silent) {
   try {
     if (!/^\d{1,2}:\d{2}$/.test(fv('dep_time')) || !/^\d{1,2}:\d{2}$/.test(fv('arr_time'))) return;
     var b = blockOf(fv('dep_time'), fv('arr_time'));
-    if (b) { fset('block', hm(b)); applyRole(); }
+    if (b) { fset('_actual', hm(b)); applyRole(); }
   } catch (e) { if (!silent) toast(e.message, true); }
 }
 
-function setRole(r) {
+function setRole(r, pattern, member) {
   S.role = r;
   $$('#roleSeg button').forEach(function (b) { b.classList.toggle('active', b.dataset.role === r); });
   $('#splitPic').style.display = r === 'split' ? '' : 'none';
+  var isCrew = r === 'N' || r === 'M' || r === 'D';
+  $('#crewPattern').style.display = isCrew ? '' : 'none';
+  $('#crewMember').style.display = isCrew ? '' : 'none';
+  if (isCrew) {
+    var list = CREW_PATTERNS.filter(function (p) { return p.kind === r; });
+    S.pattern = pattern && list.some(function (p) { return p.id === pattern; }) ? pattern : list[0].id;
+    $('#crewPattern').innerHTML = list.map(function (p) {
+      return '<option value="' + p.id + '"' + (p.id === S.pattern ? ' selected' : '') + '>' + esc(p.id + ': ' + p.crew.join(' / ')) + '</option>';
+    }).join('');
+    S.member = member || 0;
+    fillMembers();
+  }
   $('#roleHint').textContent = {
-    pic: '飛行時間を PIC と PIC 野外飛行に自動配分します',
-    sic: '飛行時間を 副操縦士 と 副操縦士 野外飛行に自動配分します',
-    split: '交替乗務: 指定した PIC 時間を PIC 側、残りを副操縦士側に配分します',
-    sim: '模擬飛行装置: 飛行時間 = 0、離着陸 = 0、SIM 時間に飛行時間を入れます'
+    N: '2 名編成: ブロックタイム全部を自分の DUTY の欄に記入します',
+    M: 'マルチ編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
+    D: 'ダブル編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
+    split: '手動分割: 指定した PIC 時間を機長側、残りを副操縦士側に配分します',
+    sim: '模擬飛行装置: 飛行時間 = 0、離着陸 = 0、SIM 時間にブロックタイムを入れます'
   }[r];
 }
 
-/** Distribute block time into JCAB columns according to the role preset. */
+/** Populate the "自分" select with the crew members of the current pattern and their formulas. */
+function fillMembers() {
+  var p = crewPattern(S.pattern); if (!p) return;
+  if (S.member >= p.crew.length) S.member = 0;
+  $('#crewMember').innerHTML = p.crew.map(function (duty, i) {
+    return '<option value="' + i + '"' + (i === S.member ? ' selected' : '') + '>' + esc('自分: ' + (i + 1) + ' ' + duty + ' (' + crewFormula(p.alloc[i]) + ')') + '</option>';
+  }).join('');
+}
+
+/**
+ * Distribute the actual block time (OUT→IN) into the JCAB columns:
+ *  N / M / D : crew allocation table (CrewRules.html) — 飛行時間 = sum of the allocated terms
+ *  split     : manual PIC / CO split of the whole block
+ *  sim       : simulator session
+ */
 function applyRole() {
   try {
-    var block = toMin(fv('block')), night = toMin(fv('_night')), xc = fv('_xc') === '1';
+    var actual = toMin(fv('_actual')), night = toMin(fv('_night')), xc = fv('_xc') === '1' ? actual : 0;
     var v = {}; DUR_KEYS.forEach(function (k) { if (k !== 'ifr') v[k] = 0; });
+    var info = '';
     if (S.role === 'sim') {
-      v.sim = block || toMin(fv('sim')); v.block = 0;
+      v.sim = actual || toMin(fv('sim')); v.block = 0;
       fset('takeoffs', 0); fset('landings', 0);
-    } else if (S.role === 'pic') {
-      v.block = block; v.pic = block; v.pic_xc = xc ? block : 0; v.pic_night = night;
-    } else if (S.role === 'sic') {
-      v.block = block; v.sic = block; v.sic_xc = xc ? block : 0; v.sic_night = night;
+      info = 'SIM ' + hm(v.sim);
     } else if (S.role === 'split') {
-      var p = Math.min(toMin(fv('_split_pic')), block), s = block - p;
-      v.block = block; v.pic = p; v.pic_xc = xc ? p : 0; v.sic = s; v.sic_xc = xc ? s : 0;
+      var p = Math.min(toMin(fv('_split_pic')), actual), s = actual - p;
+      v.block = actual; v.pic = p; v.pic_xc = xc ? p : 0; v.sic = s; v.sic_xc = xc ? s : 0;
       var pn = Math.min(night, p); v.pic_night = pn; v.sic_night = Math.min(night - pn, s);
+      info = '飛行時間 ' + hm(actual) + ' = 機長 ' + hm(p) + ' + 副操縦士 ' + hm(s);
+    } else {
+      var r = allocateCrew(S.pattern, S.member, actual, xc, night);
+      ['block', 'pic', 'solo_sic', 'pus', 'sic', 'pic_xc', 'pic_night', 'sic_xc', 'sic_night'].forEach(function (k) { v[k] = r[k]; });
+      var parts = [];
+      if (r.pic) parts.push('機長 ' + hm(r.pic));
+      if (r.solo_sic) parts.push('単独・副機長 ' + hm(r.solo_sic));
+      if (r.pus) parts.push('機長見習 ' + hm(r.pus));
+      if (r.sic) parts.push('副操縦士 ' + hm(r.sic));
+      info = r.duty + ' (' + r.formula + ') → 飛行時間 ' + hm(r.block) + (parts.length ? ' = ' + parts.join(' + ') : '') +
+        (night ? ' / 夜間 機長側 ' + hm(r.pic_night) + ' 副操縦士側 ' + hm(r.sic_night) : '');
     }
     Object.keys(v).forEach(function (k) { fset(k, hm(v[k], true)); });
-    if (S.role !== 'sim') fset('block', hm(block, true));
+    if (actual) $('#roleHint').textContent = info;
   } catch (e) { toast(e.message, true); }
 }
 
@@ -207,7 +251,7 @@ function resetForm(keep) {
   fset('takeoffs', st.default_takeoffs !== undefined ? st.default_takeoffs : 1);
   fset('landings', st.default_landings !== undefined ? st.default_landings : 1);
   fset('_xc', '1');
-  setRole(prev ? S.role : 'pic');
+  if (prev) setRole(S.role, S.pattern, S.member); else setRole('N', 'N1', 0);
   $('#formStatus').textContent = '';
 }
 
@@ -218,17 +262,18 @@ function readForm() {
 }
 
 function saveFlight() {
-  if (!fv('block') && S.role !== 'sim') recalcBlock(true);
-  if (S.role === 'sim' && !fv('sim') && fv('block')) applyRole();
+  if (!fv('_actual')) recalcBlock(true);
+  if (!fv('block') && S.role !== 'sim' && fv('_actual')) applyRole();
+  if (S.role === 'sim' && !fv('sim') && fv('_actual')) applyRole();
   var o = readForm();
-  var rec = { id: o.id };
+  var rec = { id: o.id, crew: crewCode() };
   Object.keys(COLS).forEach(function (k) {
     if (COLS[k].kind === 'meta' && k !== 'id') return;
     if (o[k] !== undefined) rec[k] = o[k];
   });
   try { DUR_KEYS.forEach(function (k) { rec[k] = toMin(o[k]); }); } catch (e) { toast(e.message, true); return; }
   rec.takeoffs = Number(o.takeoffs) || 0; rec.landings = Number(o.landings) || 0;
-  if (!rec.block && !rec.sim && !rec.ftd) { toast('飛行時間が 0 です。時刻または飛行時間を入力してください', true); return; }
+  if (!rec.block && !rec.sim && !rec.ftd) { toast('飛行時間が 0 です。OUT/IN 時刻またはブロックタイムを入力してください', true); return; }
   var btn = $('#btnSave'); btn.disabled = true; $('#formStatus').textContent = '保存中…';
   call(rec.id ? 'apiUpdateFlight' : 'apiAddFlight', rec).then(function (res) {
     var saved = res.flight;
@@ -246,7 +291,8 @@ function copyReturn() {
   var dep = o.dep, arr = o.arr;
   resetForm(true);
   fset('dep', arr); fset('arr', dep);
-  fset('flight_no', ''); fset('dep_time', ''); fset('arr_time', ''); fset('block', ''); fset('_night', ''); fset('ifr', '');
+  fset('flight_no', ''); fset('dep_time', ''); fset('arr_time', ''); fset('_actual', ''); fset('block', ''); fset('_night', ''); fset('ifr', '');
+  DUR_KEYS.forEach(function (k) { fset(k, ''); });
   F().elements.flight_no.focus();
 }
 
@@ -258,7 +304,15 @@ function editFlight(f) {
   fset('_night', hm(f.pic_night + f.sic_night, true));
   fset('_xc', (f.pic_xc || f.sic_xc) ? '1' : '0');
   fset('_split_pic', hm(f.pic, true));
-  setRole(roleOf(f) || 'pic');
+  fset('_actual', hm(blockOf(f.dep_time, f.arr_time) || f.block || f.sim, true));
+  var cc = parseCrewCode(f.crew);
+  if (cc && crewPattern(cc.patternId)) setRole(cc.patternId.charAt(0), cc.patternId, cc.member);
+  else if (f.crew === 'SIM' || roleOf(f) === 'sim') setRole('sim');
+  else if (f.crew === 'SPLIT' || roleOf(f) === 'split') setRole('split');
+  else if (roleOf(f) === 'sic') setRole('N', 'N1', 1);
+  else setRole('N', 'N1', 0);
+  // stored values are kept as-is (legacy rows may follow older allocation rules); the hint shows the code
+  $('#roleHint').textContent = '保存済みの値を表示しています (編成: ' + (f.crew || '未記録') + ')。編成や時刻を変えると再計算します';
   showTab('entry'); window.scrollTo(0, 0);
 }
 
@@ -271,7 +325,7 @@ function deleteFlight(f) {
 }
 
 /* ---------- tables ---------- */
-var LIST_COLS = ['date', 'aircraft_type', 'registration', 'dep', 'arr', 'dep_time', 'arr_time', 'flight_no', 'takeoffs', 'landings', 'block', 'pic', 'pic_xc', 'pic_night', 'sic', 'sic_xc', 'sic_night', 'ifr', 'sim', 'remarks'];
+var LIST_COLS = ['date', 'aircraft_type', 'registration', 'dep', 'arr', 'dep_time', 'arr_time', 'flight_no', 'takeoffs', 'landings', 'block', 'pic', 'pic_xc', 'pic_night', 'sic', 'sic_xc', 'sic_night', 'ifr', 'sim', 'crew', 'remarks'];
 
 function renderTable(table, flights, opts) {
   opts = opts || {};
@@ -282,6 +336,7 @@ function renderTable(table, flights, opts) {
       var c = COLS[k], v = f[k];
       if (c.kind === 'min') return '<td class="num">' + hm(v, true) + '</td>';
       if (c.kind === 'int') return '<td class="num">' + (v || '') + '</td>';
+      if (k === 'crew') return '<td>' + (v ? '<span class="tag">' + esc(v) + '</span>' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
     }).join('') + '<td><button class="btn small" data-i="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-i="' + i + '" data-act="del">削除</button></td></tr>';
   });
@@ -304,7 +359,7 @@ function renderTable(table, flights, opts) {
   };
 }
 function shortLabel(k) {
-  return { aircraft_type: '型式', registration: '登録', dep: '出発', arr: '到着', dep_time: 'OUT', arr_time: 'IN', flight_no: '内容', block: '飛行', pic: 'PIC', pic_xc: 'PIC野外', pic_night: 'PIC夜', sic: 'CO', sic_xc: 'CO野外', sic_night: 'CO夜', ifr: '計器', sim: 'SIM', takeoffs: 'T/O', landings: 'LDG', date: '月日', remarks: '自由欄' }[k] || lbl(k);
+  return { aircraft_type: '型式', registration: '登録', dep: '出発', arr: '到着', dep_time: 'OUT', arr_time: 'IN', flight_no: '内容', block: '飛行', pic: 'PIC', pic_xc: 'PIC野外', pic_night: 'PIC夜', sic: 'CO', sic_xc: 'CO野外', sic_night: 'CO夜', ifr: '計器', sim: 'SIM', takeoffs: 'T/O', landings: 'LDG', date: '月日', remarks: '自由欄', crew: '編成' }[k] || lbl(k);
 }
 
 function loadMonth(ym) {
@@ -355,6 +410,31 @@ function loadRecency() {
   }).catch(function (e) { toast(e.message, true); });
 }
 
+/* ---------- 資格要件 ---------- */
+var Q_STATUS = { ok: 'OK', due: '実施期間', warn: '要注意', over: '期限超過', unknown: '未記録', invalid: '日付不正' };
+function qItem(cls, title, big, sub) {
+  return '<div class="item ' + cls + '"><label>' + esc(title) + '</label><b>' + esc(big) + '</b><div class="sub">' + esc(sub) + '</div></div>';
+}
+function loadQualification() {
+  call('apiQualification').then(function (q) {
+    var h = '<div class="q">';
+    var lf = q.lastFlight;
+    h += qItem(lf.status, '最終乗務からの経過', lf.date ? lf.days + ' 日' : '記録なし',
+      (lf.date ? '最終乗務 ' + lf.date + ' / ' : '') + '連続 ' + lf.limit + ' 日以上の中断で復帰訓練');
+    var rc = q.recency;
+    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回', rc.since + ' 以降 / 各 ' + rc.required + ' 回以上');
+    q.training.forEach(function (t) {
+      h += qItem(t.status, t.label, t.last ? '前回 ' + t.last : '記録なし',
+        t.last ? '次回 基準月 ' + t.baseMonth + ' (実施期間 ' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '飛行内容に ' + t.code + ' と記入すると自動判定');
+    });
+    q.expiries.forEach(function (e) {
+      h += qItem(e.status, e.label, e.date ? '有効期限 ' + e.date : '未設定',
+        e.date && e.status !== 'invalid' ? (e.daysLeft < 0 ? Math.abs(e.daysLeft) + ' 日超過' : '残り ' + e.daysLeft + ' 日 (' + e.warnDays + ' 日前から警告)') : '設定タブで入力');
+    });
+    $('#qualBox').innerHTML = h + '</div>';
+  }).catch(function (e) { $('#qualBox').textContent = e.message; });
+}
+
 /* ---------- year sheets (auto-maintained server-side) ---------- */
 function loadReports() {
   call('apiListReports').then(function (list) {
@@ -372,12 +452,17 @@ function buildCarryGrid(st) {
     g.appendChild(d);
   });
 }
+var EXP_KEYS = [['exp_pe', 'PE (航空身体検査証明)'], ['exp_pea', 'PEA'], ['exp_english', '航空英語能力証明'], ['exp_competency', '特定操縦技能審査 満了日'], ['exp_passport', 'パスポート'], ['exp_visa', 'VISA']];
 function fillSettings(st) {
   ['pilot_name', 'licence_no', 'time_basis', 'default_aircraft_type'].forEach(function (k) { $('#s_' + k).value = st[k] || ''; });
+  var g = $('#expGrid');
+  if (!g.children.length) g.innerHTML = EXP_KEYS.map(function (e) { return '<div><label>' + esc(e[1]) + '</label><input type="date" id="s_' + e[0] + '"></div>'; }).join('');
+  EXP_KEYS.forEach(function (e) { $('#s_' + e[0]).value = st[e[0]] || ''; });
 }
 function saveSettings() {
   var o = { carry_forward: {} };
   ['pilot_name', 'licence_no', 'time_basis', 'default_aircraft_type'].forEach(function (k) { o[k] = $('#s_' + k).value; });
+  EXP_KEYS.forEach(function (e) { o[e[0]] = $('#s_' + e[0]).value; });
   try { TOTAL_KEYS.forEach(function (k) { var v = $('#cf_' + k).value; o.carry_forward[k] = (k === 'takeoffs' || k === 'landings') ? Number(v) || 0 : toMin(v); }); }
   catch (e) { toast(e.message, true); return; }
   $('#settingsStatus').textContent = '保存中…';

@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
-GS_ORDER = ["Schema.gs", "Util.gs", "Api.gs", "Totals.gs", "Report.gs", "Import.gs", "Code.gs"]
+GS_ORDER = ["Schema.gs", "Util.gs", "Api.gs", "Totals.gs", "Report.gs", "Import.gs", "Crew.gs", "Code.gs"]
 
 SHIM = """
 <script>
@@ -52,9 +52,10 @@ window.google = { script: { run: null } };
 
 def build_index():
     html = (SRC / "Index.html").read_text(encoding="utf-8")
-    html = html.replace("<?!= include('Style'); ?>", (SRC / "Style.html").read_text(encoding="utf-8"))
     scripts = "\n".join('<script src="/src/%s"></script>' % f for f in GS_ORDER)
     html = html.replace("<?!= include('Script'); ?>", (SHIM % scripts) + (SRC / "Script.html").read_text(encoding="utf-8"))
+    # any other <?!= include('X'); ?> → contents of src/X.html (Style, CrewRules, ...)
+    html = re.sub(r"<\?!= include\('(\w+)'\); \?>", lambda m: (SRC / (m.group(1) + ".html")).read_text(encoding="utf-8"), html)
     return html
 
 

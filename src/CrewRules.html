@@ -1,0 +1,104 @@
+<script>
+/**
+ * CrewRules — flight-time allocation for multi (3-pilot) / double (4-pilot) crews.
+ * Source: JAL FLTOPS B777 ADM_Administration 26.29 (14 SEP 2026) 9-3 「マルチまたはダブル編成時の飛行時間配分」
+ *         飛行時間配分表 (Rev.2).
+ *
+ * This file is plain JavaScript wrapped in <script> so that ONE copy serves both the browser UI
+ * (included into Index.html) and the Apps Script server (Crew.gs evaluates it for validation/tests).
+ * Do not use Apps Script or DOM APIs here.
+ *
+ * Rules implemented (from the document):
+ *  - Each crew member's share = sum of "fraction × Block Time" terms, each term rounded to the
+ *    nearest minute (四捨五入).
+ *  - 飛行時間 (8項) = the SUM of the member's allocated terms (机長側 + 副操縦士側), NOT the raw Block Time.
+ *  - 野外飛行 / 夜間飛行 are allocated with the same fractions.
+ *  - Duty → JCAB column: CA / CKC / RAL → 機長 (9項), SIC → 単独・副機長 (10項), PUS → 機長見習業務 (11項),
+ *    CO → 副操縦士 (14項). 野外/夜間 of CA/CKC/RAL/SIC/PUS → 12/13項 (機長側), of CO → 16/17項 (副操縦士側).
+ *  - ダブル編成 Pattern 7 / 8 are not included (cut off in the reference material).
+ */
+var CREW_DUTIES = {
+  CA: '機長 (CA)', CKC: '機長 (CKC)', RAL: '機長 (RAL)', SIC: '単独・副機長 (SIC DUTY)', CO: '副操縦士 (CO)', PUS: '機長見習 (PUS)'
+};
+var CREW_KINDS = { N: '通常編成 (2名)', M: 'マルチ編成 (3名)', D: 'ダブル編成 (4名)' };
+
+/* term = [numerator, denominator, duty] */
+function T_(n, d, duty) { return [n, d, duty]; }
+var CREW_PATTERNS = [
+  // ---- 通常編成 (2名): 全時間を自分の DUTY に記入 ----
+  { id: 'N1', kind: 'N', crew: ['CA', 'CO'],  alloc: [[T_(1, 1, 'CA')], [T_(1, 1, 'CO')]] },
+  { id: 'N2', kind: 'N', crew: ['CA', 'SIC'], alloc: [[T_(1, 1, 'CA')], [T_(1, 1, 'SIC')]] },
+  { id: 'N3', kind: 'N', crew: ['CA', 'PUS'], alloc: [[T_(1, 1, 'CA')], [T_(1, 1, 'PUS')]] },
+  // ---- マルチ編成 (3名) Pattern.1 - 11 ----
+  { id: 'M1',  kind: 'M', crew: ['CA', 'CA', 'CA'],    alloc: [[T_(1, 3, 'CA'), T_(1, 3, 'CO')], [T_(1, 3, 'CA'), T_(1, 3, 'CO')], [T_(1, 3, 'CA'), T_(1, 3, 'CO')]] },
+  { id: 'M2',  kind: 'M', crew: ['CA', 'CA', 'CO'],    alloc: [[T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(2, 3, 'CO')]] },
+  { id: 'M3',  kind: 'M', crew: ['CA', 'SIC', 'CO'],   alloc: [[T_(2, 3, 'CA')], [T_(1, 3, 'SIC'), T_(1, 3, 'CO')], [T_(2, 3, 'CO')]] },
+  { id: 'M4',  kind: 'M', crew: ['CKC', 'CA', 'CA'],   alloc: [[T_(1, 3, 'CKC'), T_(1, 3, 'CA')], [T_(1, 3, 'CA'), T_(1, 3, 'CO')], [T_(1, 3, 'CA'), T_(1, 3, 'CO')]] },
+  { id: 'M5',  kind: 'M', crew: ['CKC', 'CA', 'CO'],   alloc: [[T_(2, 3, 'CKC')], [T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(2, 3, 'CO')]] },
+  { id: 'M6',  kind: 'M', crew: ['CKC', 'SIC', 'CO'],  alloc: [[T_(2, 3, 'CKC'), T_(1, 3, 'CA')], [T_(1, 3, 'SIC'), T_(1, 3, 'CO')], [T_(2, 3, 'CO')]] },
+  { id: 'M7',  kind: 'M', crew: ['CKC', 'RAL', 'CA'],  alloc: [[T_(2, 3, 'CKC')], [T_(1, 3, 'RAL'), T_(1, 3, 'CO')], [T_(1, 3, 'CA'), T_(1, 3, 'CO')]] },
+  { id: 'M8',  kind: 'M', crew: ['CKC', 'RAL', 'SIC'], alloc: [[T_(2, 3, 'CKC'), T_(1, 3, 'CA')], [T_(1, 3, 'RAL'), T_(1, 3, 'CO')], [T_(1, 3, 'SIC'), T_(1, 3, 'CO')]] },
+  { id: 'M9',  kind: 'M', crew: ['CKC', 'RAL', 'CO'],  alloc: [[T_(2, 3, 'CKC'), T_(1, 3, 'CA')], [T_(1, 3, 'RAL'), T_(1, 3, 'SIC')], [T_(2, 3, 'CO')]] },
+  { id: 'M10', kind: 'M', crew: ['CA', 'CA', 'PUS'],   alloc: [[T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(2, 3, 'PUS')]] },
+  { id: 'M11', kind: 'M', crew: ['CA', 'SIC', 'PUS'],  alloc: [[T_(2, 3, 'CA')], [T_(1, 3, 'SIC'), T_(1, 3, 'CO')], [T_(2, 3, 'PUS')]] },
+  // ---- ダブル編成 (4名) Pattern.1 - 6 (7, 8 は資料未確認) ----
+  { id: 'D1', kind: 'D', crew: ['CA', 'CA', 'CA', 'CA'],   alloc: [[T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')]] },
+  { id: 'D2', kind: 'D', crew: ['CA', 'CA', 'CA', 'CO'],   alloc: [[T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CO')]] },
+  { id: 'D3', kind: 'D', crew: ['CA', 'CA', 'CO', 'CO'],   alloc: [[T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')], [T_(1, 2, 'CO')]] },
+  { id: 'D4', kind: 'D', crew: ['CKC', 'CA', 'CA', 'CO'],  alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] },
+  { id: 'D5', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CA'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')]] },
+  { id: 'D6', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CO'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] }
+];
+
+/** JCAB column for a duty code and which side (pic / sic) its 野外・夜間 go to. */
+var CREW_DUTY_COLUMN = { CA: 'pic', CKC: 'pic', RAL: 'pic', SIC: 'solo_sic', PUS: 'pus', CO: 'sic' };
+var CREW_DUTY_SIDE = { CA: 'pic', CKC: 'pic', RAL: 'pic', SIC: 'pic', PUS: 'pic', CO: 'sic' };
+
+function crewPattern(id) {
+  for (var i = 0; i < CREW_PATTERNS.length; i++) if (CREW_PATTERNS[i].id === id) return CREW_PATTERNS[i];
+  return null;
+}
+
+/** "1/2CA + 1/6CO" style text for a member's allocation. */
+function crewFormula(terms) {
+  return terms.map(function (t) { return (t[1] === 1 ? '' : t[0] + '/' + t[1]) + t[2]; }).join(' + ');
+}
+
+/** Round half up to the nearest minute (四捨五入). */
+function crewRound(x) { return Math.floor(x + 0.5); }
+
+/**
+ * Allocate a leg for crew member `member` (0-based index into pattern.crew).
+ * @param {string} patternId  e.g. 'M2'
+ * @param {number} member     index of "自分" in the pattern's crew list
+ * @param {number} block      actual block time (OUT→IN) in minutes
+ * @param {number} xc         actual 野外飛行 minutes (usually = block or 0)
+ * @param {number} night      actual 夜間飛行 minutes
+ * @returns {{block, pic, solo_sic, pus, sic, pic_xc, pic_night, sic_xc, sic_night, formula, duty, terms}}
+ */
+function allocateCrew(patternId, member, block, xc, night) {
+  var p = crewPattern(patternId);
+  if (!p) throw new Error('未知の編成パターン: ' + patternId);
+  member = Number(member) || 0;
+  if (member < 0 || member >= p.crew.length) throw new Error('編成内の位置が不正です: ' + member);
+  var out = { block: 0, pic: 0, solo_sic: 0, pus: 0, sic: 0, pic_xc: 0, pic_night: 0, sic_xc: 0, sic_night: 0,
+    duty: p.crew[member], formula: crewFormula(p.alloc[member]), terms: [] };
+  p.alloc[member].forEach(function (t) {
+    var n = t[0], d = t[1], duty = t[2];
+    var col = CREW_DUTY_COLUMN[duty], side = CREW_DUTY_SIDE[duty];
+    var m = crewRound((block || 0) * n / d);
+    var mx = crewRound((xc || 0) * n / d);
+    var mn = crewRound((night || 0) * n / d);
+    out[col] += m; out.block += m;
+    out[side + '_xc'] += mx; out[side + '_night'] += mn;
+    out.terms.push({ duty: duty, fraction: n + '/' + d, minutes: m, xc: mx, night: mn });
+  });
+  return out;
+}
+
+/** Parse a stored crew code "M2/0" → { patternId, member } or null. */
+function parseCrewCode(code) {
+  var m = String(code || '').match(/^([NMD]\d+)\/(\d+)$/);
+  return m ? { patternId: m[1], member: Number(m[2]) } : null;
+}
+</script>

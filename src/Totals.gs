@@ -78,6 +78,71 @@ function apiYearSummary(year) {
   return { year: year, months: months, yearTotal: yearTotal, byType: byType, years: Object.keys(years).sort() };
 }
 
+/* ---------- 資格要件 (qualification) ---------- */
+
+function addMonths_(dateStr, n) {
+  var p = dateStr.split('-').map(Number);
+  var d = new Date(p[0], p[1] - 1 + n, 1);
+  return d.getFullYear() + '-' + pad2_(d.getMonth() + 1);
+}
+function daysBetween_(a, b) { // b - a in days, both "yyyy-mm-dd"
+  var pa = a.split('-').map(Number), pb = b.split('-').map(Number);
+  return Math.round((Date.UTC(pb[0], pb[1] - 1, pb[2]) - Date.UTC(pa[0], pa[1] - 1, pa[2])) / 86400000);
+}
+
+/**
+ * Qualification status derived from the logbook (+ expiry dates in Settings):
+ *  - last flight date / days since (復帰訓練 if >= QUAL_RETRAIN_DAYS)
+ *  - takeoffs & landings in the last QUAL_RECENCY_DAYS days
+ *  - last date of each recurrent training code (M11/M12/M21/M22 in 飛行内容) and the next window
+ *  - tracked expiries with days remaining
+ * `today` (optional "yyyy-mm-dd") makes the result testable.
+ */
+function apiQualification(today) {
+  today = today ? parseDateStr_(today) : parseDateStr_(new Date());
+  var all = sortFlights_(readAllFlights_());
+  var settings = getSettings_();
+  var out = { today: today, items: [] };
+
+  // last actual flight (block > 0 or a landing) — simulator sessions don't count
+  var last = null;
+  all.forEach(function (f) { if ((f.block > 0 || f.landings > 0) && f.date <= today && (!last || f.date > last)) last = f.date; });
+  var since = last ? daysBetween_(last, today) : null;
+  out.lastFlight = { date: last, days: since, limit: QUAL_RETRAIN_DAYS,
+    status: since === null ? 'unknown' : (since >= QUAL_RETRAIN_DAYS ? 'over' : (since >= QUAL_RETRAIN_DAYS - 14 ? 'warn' : 'ok')) };
+
+  // 90-day recency
+  var cut = new Date(); cut.setTime(Date.parse(today + 'T00:00:00Z') - QUAL_RECENCY_DAYS * 86400000);
+  var cutStr = cut.getUTCFullYear() + '-' + pad2_(cut.getUTCMonth() + 1) + '-' + pad2_(cut.getUTCDate());
+  var to = 0, ld = 0;
+  all.forEach(function (f) { if (f.date > cutStr && f.date <= today) { to += f.takeoffs; ld += f.landings; } });
+  out.recency = { days: QUAL_RECENCY_DAYS, since: cutStr, takeoffs: to, landings: ld, required: QUAL_RECENCY_LANDINGS,
+    status: ld >= QUAL_RECENCY_LANDINGS && to >= QUAL_RECENCY_LANDINGS ? 'ok' : 'over' };
+
+  // recurrent training codes
+  var tm = today.substring(0, 7);
+  out.training = QUAL_TRAINING.map(function (t) {
+    var lastDate = null;
+    all.forEach(function (f) { if (f.flight_no.toUpperCase().indexOf(t.code) === 0 && (!lastDate || f.date > lastDate)) lastDate = f.date; });
+    if (!lastDate) return { code: t.code, label: t.label, last: null, status: 'unknown' };
+    var base = addMonths_(lastDate, t.months);              // next base month
+    var from = addMonths_(base + '-01', -QUAL_WINDOW_MONTHS), until = addMonths_(base + '-01', QUAL_WINDOW_MONTHS);
+    var status = tm > until ? 'over' : (tm >= from ? 'due' : 'ok');
+    return { code: t.code, label: t.label, last: lastDate, baseMonth: base, windowFrom: from, windowUntil: until, status: status };
+  });
+
+  // expiries from settings
+  out.expiries = QUAL_EXPIRIES.map(function (e) {
+    var v = String(settings[e.key] || '').trim();
+    if (!v) return { key: e.key, label: e.label, date: '', status: 'unknown' };
+    var d; try { d = parseDateStr_(v); } catch (err) { return { key: e.key, label: e.label, date: v, status: 'invalid' }; }
+    var left = daysBetween_(today, d);
+    return { key: e.key, label: e.label, date: d, daysLeft: left, warnDays: e.warnDays,
+      status: left < 0 ? 'over' : (left <= e.warnDays ? 'warn' : 'ok') };
+  });
+  return out;
+}
+
 /**
  * Recency check used by the UI header: hours/landings in the trailing N days.
  * (e.g. 90-day landings for passenger-carrying currency).

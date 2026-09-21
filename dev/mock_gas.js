@@ -78,6 +78,11 @@
     return 0;
   };
   Sheet.prototype.getMaxRows = function () { return Math.max(this.maxRows, this.rows.length); };
+  Sheet.prototype.getLastColumn = function () {
+    var n = 0;
+    this.rows.forEach(function (r) { for (var j = r.length - 1; j >= 0; j--) { if (r[j] !== '' && r[j] !== undefined && r[j] !== null) { n = Math.max(n, j + 1); break; } } });
+    return n;
+  };
   Sheet.prototype.appendRow = function (r) { this.rows.push(r.slice()); return this; };
   Sheet.prototype.getRange = function (r, c, nr, nc) { return new Range(this, r, c, nr || 1, nc || 1); };
   Sheet.prototype.deleteRow = function (r) { this.rows.splice(r - 1, 1); return this; };
@@ -181,6 +186,7 @@
   g.HtmlService = {
     XFrameOptionsMode: { ALLOWALL: 'ALLOWALL' },
     createTemplateFromFile: function () { return { evaluate: function () { var o = { setTitle: function () { return o; }, addMetaTag: function () { return o; }, setXFrameOptionsMode: function () { return o; } }; return o; } }; },
-    createHtmlOutputFromFile: function () { return { getContent: function () { return ''; } }; }
+    // Node hosts set g.__srcFiles = { CrewRules: '<script>...</script>' } so server code can read HTML files.
+    createHtmlOutputFromFile: function (name) { return { getContent: function () { return (g.__srcFiles || {})[name] || ''; } }; }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

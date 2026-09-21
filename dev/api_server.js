@@ -16,7 +16,8 @@ var port = Number(process.argv[2]) || 8766;
 var ctx = vm.createContext({ console: console, Math: Math, Date: Date, JSON: JSON, Error: Error, String: String, Number: Number, Array: Array, Object: Object, RegExp: RegExp, parseInt: parseInt, parseFloat: parseFloat, isNaN: isNaN });
 function load(f) { vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }); }
 load('dev/mock_gas.js');
-['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
+ctx.__srcFiles = { CrewRules: fs.readFileSync(path.join(root, 'src/CrewRules.html'), 'utf8') };
+['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
 
 ctx.setupSpreadsheet();
 ctx.PropertiesService.getScriptProperties().setProperty('API_PASSWORD', 'dev-pass');

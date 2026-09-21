@@ -34,26 +34,32 @@
       <div><label>飛行内容 (便名等)</label><input name="flight_no" placeholder="JL10"></div>
       <div><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
       <div><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
-      <div><label>飛行時間 (自動)</label><input class="dur" name="block" placeholder="H:MM"></div>
+      <div><label>ブロックタイム OUT→IN (自動)</label><input class="dur" name="_actual" placeholder="H:MM"></div>
     </div>
 
     <div class="row" style="margin-top:12px">
-      <label style="margin:0">乗務区分</label>
+      <label style="margin:0">編成</label>
       <div class="seg" id="roleSeg">
-        <button type="button" data-role="pic" class="active">機長 (PIC)</button>
-        <button type="button" data-role="sic">副操縦士 (CO)</button>
-        <button type="button" data-role="split">分割 (PIC+CO)</button>
+        <button type="button" data-role="N" class="active">通常 (2名)</button>
+        <button type="button" data-role="M">マルチ (3名)</button>
+        <button type="button" data-role="D">ダブル (4名)</button>
+        <button type="button" data-role="split">手動分割</button>
         <button type="button" data-role="sim">SIM</button>
       </div>
-      <span class="hint" id="roleHint">飛行時間を PIC と PIC 野外飛行に自動配分します</span>
+      <select name="_pattern" id="crewPattern" style="width:auto"></select>
+      <select name="_member" id="crewMember" style="width:auto"></select>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <span class="hint" id="roleHint"></span>
     </div>
 
     <div class="grid narrow" style="margin-top:10px">
       <div id="splitPic" style="display:none"><label>うち PIC 時間</label><input class="dur" name="_split_pic" placeholder="H:MM"></div>
-      <div><label>夜間飛行</label><input class="dur" name="_night" placeholder="H:MM"></div>
+      <div><label>夜間飛行 (実時間)</label><input class="dur" name="_night" placeholder="H:MM"></div>
       <div><label>計器飛行</label><input class="dur" name="ifr" placeholder="H:MM"></div>
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
+      <div><label>記入する飛行時間 (8項, 自動)</label><input class="dur" name="block" placeholder="H:MM"></div>
     </div>
 
     <details>
@@ -98,6 +104,7 @@
       <select id="recencyDays" style="width:auto"><option value="30">30日</option><option value="90" selected>90日</option><option value="180">180日</option><option value="365">365日</option></select>
     </div>
   </div>
+  <div class="card"><h2>資格要件</h2><div id="qualBox" class="hint">読み込み中…</div></div>
   <div class="card"><h2>累計 (繰越 + 全記録)</h2><div class="kpi" id="kpiCum"></div></div>
   <div class="card"><h2 id="recencyTitle">直近 90 日</h2><div class="kpi" id="kpiRecent"></div></div>
   <div class="card"><h2 id="sumTitle">月別集計</h2><div class="scroll"><table id="sumTable"></table></div></div>
@@ -114,6 +121,11 @@
       <div><label>時刻基準</label><select id="s_time_basis"><option>UTC</option><option>JST</option><option>LT</option></select></div>
       <div><label>既定の型式</label><input id="s_default_aircraft_type" class="mono"></div>
     </div>
+  </div>
+  <div class="card">
+    <h2>資格 有効期限</h2>
+    <p class="hint">入力すると集計タブの「資格要件」に残日数と警告（PE/PEA は 45 日前、航空英語・特定操縦技能は 90 日前、パスポート・VISA は 180 日前）が表示されます。訓練審査（M11/M12/M21/M22）と最終乗務日は飛行日誌の記録から自動で判定します。</p>
+    <div class="grid" id="expGrid"></div>
   </div>
   <div class="card">
     <h2>繰越合計 (システム導入前の累計)</h2>
@@ -144,6 +156,7 @@
 <datalist id="dlApts"></datalist>
 <div id="toast"></div>
 
+<?!= include('CrewRules'); ?>
 <?!= include('Script'); ?>
 </body>
 </html>

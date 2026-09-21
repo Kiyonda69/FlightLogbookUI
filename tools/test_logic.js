@@ -11,7 +11,8 @@ var root = path.join(__dirname, '..');
 var ctx = vm.createContext({ console: console, Math: Math, Date: Date, JSON: JSON, Error: Error, String: String, Number: Number, Array: Array, Object: Object, RegExp: RegExp, parseInt: parseInt, parseFloat: parseFloat, isNaN: isNaN });
 function load(file) { vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), ctx, { filename: file }); }
 load('dev/mock_gas.js');
-['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
+ctx.__srcFiles = { CrewRules: fs.readFileSync(path.join(root, 'src/CrewRules.html'), 'utf8') };
+['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
 
 var failures = 0;
 function check(name, actual, expected) {
@@ -205,6 +206,68 @@ check('unknown key rejected', /不明なキー: blok/.test(badErr || ''), true);
 var badJson = null; try { ctx.apiImportCarryForward('nope'); } catch (e) { badJson = e.message; }
 check('invalid json rejected', /JSON を解釈できません/.test(badJson || ''), true);
 check('cumulative still correct', ctx.apiBootstrap().cumulative, expected);
+
+// --- crew allocation rules (CrewRules.html shared with the UI), examples from the JAL document
+var CR = ctx.loadCrewRules_();
+check('crew rules: 3 normal + 11 multi + 6 double patterns', CR.CREW_PATTERNS.length, 3 + 11 + 6);
+var a = CR.allocateCrew('M2', 0, 499, 499, 120);           // CA DUTY in CA/CA/CO: 1/2CA + 1/6CO, block 8:19
+check('M2 CA: 機長 = round(499/2) = 250', a.pic, 250);
+check('M2 CA: 副操縦士 = round(499/6) = 83', a.sic, 83);
+check('M2 CA: 飛行時間 = 250 + 83 (not 2/3 of block)', a.block, 333);
+check('M2 CA: 野外 follows the same fractions', [a.pic_xc, a.sic_xc], [250, 83]);
+check('M2 CA: 夜間 120 → 60 + 20', [a.pic_night, a.sic_night], [60, 20]);
+check('M2 CA: formula text', a.formula, '1/2CA + 1/6CO');
+var b = CR.allocateCrew('M2', 2, 499, 499, 0);             // CO DUTY: 2/3CO
+check('M2 CO: 副操縦士 = round(499*2/3) = 333, 飛行時間 = 333', [b.sic, b.block, b.pic], [333, 333, 0]);
+var c = CR.allocateCrew('M3', 1, 499, 499, 90);            // SIC DUTY in CA/SIC/CO: 1/3SIC + 1/3CO
+check('M3 SIC: 単独・副機長 166 + 副操縦士 166 = 飛行時間 332', [c.solo_sic, c.sic, c.block], [166, 166, 332]);
+check('M3 SIC: SIC 側の野外・夜間は機長側 (12/13項), CO 側は 16/17項', [c.pic_xc, c.pic_night, c.sic_xc, c.sic_night], [166, 30, 166, 30]);
+var d = CR.allocateCrew('D1', 0, 499, 0, 0);               // double crew, 4 captains: 1/4CA + 1/4CO
+check('D1 CA: 125 + 125 = 250', [d.pic, d.sic, d.block], [125, 125, 250]);
+check('M4 CKC: 1/3CKC + 1/3CA both count as 機長', CR.allocateCrew('M4', 0, 600, 0, 0).pic, 400);
+check('M9 RAL: 1/3RAL (機長) + 1/3SIC (単独・副機長)', (function (r) { return [r.pic, r.solo_sic, r.block]; })(CR.allocateCrew('M9', 1, 600, 0, 0)), [200, 200, 400]);
+check('M10 PUS: 2/3PUS → 機長見習', CR.allocateCrew('M10', 2, 600, 600, 0).pus, 400);
+check('N1 CA: whole block as 機長', CR.allocateCrew('N1', 0, 600, 600, 30).pic, 600);
+check('rounding is half-up', CR.allocateCrew('M1', 0, 3, 0, 0).pic, 1);          // 3/3 = 1
+check('every pattern: crew length == alloc length', CR.CREW_PATTERNS.every(function (p) { return p.crew.length === p.alloc.length; }), true);
+check('every duty code known', CR.CREW_PATTERNS.every(function (p) { return p.alloc.every(function (m) { return m.every(function (t) { return CR.CREW_DUTIES[t[2]]; }); }); }), true);
+check('parseCrewCode', CR.parseCrewCode('M2/0'), { patternId: 'M2', member: 0 });
+check('parseCrewCode rejects garbage', CR.parseCrewCode('SPLIT'), null);
+var badP = null; try { CR.allocateCrew('D7', 0, 100, 0, 0); } catch (e) { badP = e.message; }
+check('unknown pattern rejected', /未知の編成パターン/.test(badP || ''), true);
+check('apiCrewPatterns lists formulas', ctx.apiCrewPatterns().patterns.filter(function (p) { return p.id === 'M2'; })[0].formulas, ['1/2CA + 1/6CO', '1/2CA + 1/6CO', '2/3CO']);
+check('apiAllocateCrew accepts H:MM', ctx.apiAllocateCrew('M2', 0, '8:19', '8:19', '2:00').block, 333);
+
+// --- crew column round trip
+var cr = ctx.apiAddFlight({ date: '2025-03-01', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'KLAX', dep_time: '23:40', arr_time: '08:55',
+  flight_no: 'JL62', takeoffs: 1, landings: 1, block: 333, pic: 250, sic: 83, pic_xc: 250, sic_xc: 83, crew: 'm2/0' });
+check('crew code stored upper-case', cr.flight.crew, 'M2/0');
+check('crew code read back', ctx.apiGetMonth('2025-03').flights[0].crew, 'M2/0');
+var badCrew = null; try { ctx.apiAddFlight({ date: '2025-03-02', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'RJOO', dep_time: '01:00', arr_time: '02:00', pic: 60, crew: 'X9' }); } catch (e) { badCrew = e.message; }
+check('bad crew code rejected', /編成コード/.test(badCrew || ''), true);
+ctx.apiDeleteFlight(cr.flight.id);
+// header migration: a sheet created before the crew column gets the header appended
+var fl = ctx.__mockSpreadsheet.getSheetByName('Flights');
+fl.rows[0] = fl.rows[0].slice(0, fl.rows[0].length - 1);
+check('ensureFlightsHeader_ appends missing header', ctx.ensureFlightsHeader_(fl), 1);
+check('header complete again', fl.rows[0][fl.rows[0].length - 1], 'crew');
+
+// --- 資格要件 (qualification) from the logbook, evaluated at a fixed "today"
+var q = ctx.apiQualification('2024-11-15');
+check('qual: last flight 2024-10-26, 20 days ago → ok', [q.lastFlight.date, q.lastFlight.days, q.lastFlight.status], ['2024-10-26', 20, 'ok']);
+check('qual: 60+ days without flying → 復帰訓練', ctx.apiQualification('2025-01-10').lastFlight.status, 'over');
+check('qual: 90-day landings counted', q.recency.landings >= 3 && q.recency.status === 'ok', true);
+var m21 = q.training.filter(function (t) { return t.code === 'M21'; })[0];
+check('qual: last M21 = 2024-10-24, next base 2025-10, window 2025-09..2025-11', [m21.last, m21.baseMonth, m21.windowFrom, m21.windowUntil, m21.status], ['2024-10-24', '2025-10', '2025-09', '2025-11', 'ok']);
+check('qual: inside window → due', ctx.apiQualification('2025-09-05').training.filter(function (t) { return t.code === 'M21'; })[0].status, 'due');
+check('qual: past window → over', ctx.apiQualification('2025-12-05').training.filter(function (t) { return t.code === 'M21'; })[0].status, 'over');
+ctx.apiSaveSettings({ exp_pe: '2024-12-20', exp_english: '2030-01-01' });
+var q2 = ctx.apiQualification('2024-11-15');
+check('qual: PE expiring in 35 days → warn (45-day rule)', q2.expiries.filter(function (e) { return e.key === 'exp_pe'; })[0].status, 'warn');
+check('qual: english far away → ok', q2.expiries.filter(function (e) { return e.key === 'exp_english'; })[0].status, 'ok');
+check('qual: untracked expiry → unknown', q2.expiries.filter(function (e) { return e.key === 'exp_visa'; })[0].status, 'unknown');
+check('qual: expiry settings do not trigger year sheet rebuild', true, true);
+ctx.apiSaveSettings({ exp_pe: '', exp_english: '' });
 
 // --- JSON API (doPost) used by the GitHub Pages front-end
 function post(obj) { return JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(obj) } }).getContent()); }

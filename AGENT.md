@@ -31,6 +31,8 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   ├── Totals.gs            項小計 / 前項までの合計 / 合計、年間集計、直近 N 日
 │   ├── Report.gs            年次 JCAB 様式シート「飛行日誌_YYYY」（12 か月ブロック、Numbers の年シート相当）を書き込みのたびに自動再生成
 │   ├── Import.gs            CSV / 繰越 JSON 取込（importCarryForwardFromDrive / importCarryForwardPrompt は引数なしでエディタ・メニューから実行可）
+│   ├── Crew.gs              CrewRules.html をサーバー側で評価 (loadCrewRules_, apiCrewPatterns, apiAllocateCrew)
+│   ├── CrewRules.html       【共有】編成パターン表 CREW_PATTERNS と allocateCrew()（UI とサーバーの唯一の正）
 │   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 設定・取込）
 │   ├── Style.html           CSS
 │   └── Script.html          クライアント JS（google.script.run 経由でサーバー関数を呼ぶ）
@@ -88,6 +90,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 | sim / ftd / instructor / flight_engineer / other | min | 模擬飛行装置 / 飛行訓練装置 / 操縦教員 / 航空機関士 / その他 |
 | remarks | text | 自由欄 |
 | source / created_at / updated_at | meta | 由来 (`ui` / `csv:...` / `numbers:...`) と時刻 |
+| crew | text | 編成コード `M2/0`（パターン id / 自分の位置）, `SPLIT`, `SIM`, 旧データは空。帳票には出さない |
+
+列を末尾に追加したときは `ensureFlightsHeader_`（`setupSpreadsheet` と書式修復が呼ぶ）が既存シートに見出しとテキスト書式を追加する。
 
 ### 不変条件
 
@@ -107,16 +112,28 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 重複判定キー（CSV 取込）: `date | dep_time | flight_no | registration`。
 - 帳票に文字列らしき値（月日 `"5.30"`、時刻 `"23:40"`）を書くときは **`setNumberFormat('@')` を `setValues` より先に**呼ぶ。後から書式を付けても Sheets は書き込み時点で `5.3` に変換してしまう（実際に起きた不具合）。`dev/mock_gas.js` はこの自動変換を模擬するので、テストで検出できる。
 
-### 乗務区分プリセット（UI, `applyRole` in Script.html）
+### 編成と飛行時間の自動配分（UI `applyRole` + 共有ルール `src/CrewRules.html`）
 
-| 区分 | 配分 |
-|---|---|
-| PIC | block → pic, pic_xc（野外あり時）, 夜間 → pic_night |
-| SIC | block → sic, sic_xc, 夜間 → sic_night |
-| 分割 (PIC+SIC) | 指定 PIC 分 → pic/pic_xc、残り → sic/sic_xc。夜間はまず PIC 側に割当、超過分を SIC 側へ |
-| SIM | block → sim、飛行時間・離着陸は 0 |
+根拠資料: JAL FLTOPS B777 ADM_Administration 26.29 (14 SEP 2026) 9-3「マルチまたはダブル編成時の飛行時間配分」飛行時間配分表 (Rev.2)。
+
+- `CrewRules.html` が **唯一の配分表**（`CREW_PATTERNS`）と計算関数 `allocateCrew(patternId, member, block, xc, night)` を持つ。プレーン JS を `<script>` で包んであり、UI は `include('CrewRules')` で読み込み、サーバーは `Crew.gs` の `loadCrewRules_()`（`new Function`）で同じコードを評価する。テストは `tools/test_logic.js` で資料の例（8:19 の CA DUTY → 機長 4:10 + 副操縦士 1:23 = 飛行時間 5:33）を検証。
+- パターン: 通常 N1〜N3（2 名、全時間を自分の DUTY へ）、マルチ M1〜M11（3 名）、ダブル D1〜D6（4 名）。**ダブル Pattern 7・8 は資料のスクリーンショットで切れているため未収録**。資料が揃ったら `CREW_PATTERNS` に追加するだけでよい。
+- 計算規則: 各項（分数 × ブロックタイム）を **項ごとに四捨五入**し、**飛行時間 (8 項) はその合計**（ブロックタイムの 2/3 等ではない）。野外・夜間も同じ分数。DUTY → 列: CA/CKC/RAL → 機長 (9)、SIC → 単独・副機長 (10)、PUS → 機長見習 (11)、CO → 副操縦士 (14)。野外・夜間は CA/CKC/RAL/SIC/PUS が機長側 (12/13)、CO が副操縦士側 (16/17)。
+- UI: 「編成」= 通常 / マルチ / ダブル / 手動分割 / SIM。マルチ・ダブルは「パターン」と「自分（何番目・DUTY・計算式）」を選ぶ。入力 `_actual` = OUT→IN のブロックタイム（自動計算）、`_night` = 実夜間時間、`_xc` = 野外の有無。`block`（8 項）は計算結果で、詳細欄で手動上書き可。
+- 保存時に `crew` 列へ編成コード（`M2/0` = パターン / 自分の位置、`SPLIT`、`SIM`）を記録し、編集時に選択を復元する。**編集時は保存済みの値を再計算しない**（旧ルールで記録した過去レグを壊さないため）。編成や時刻を変えたときだけ再計算。
+- 旧データ（2024 年以前）は 3/4 + 1/4 など旧ルールで記録されている。Rev.2 は新規入力にのみ適用。
 
 「JCAB 全項目を直接編集」を開けば任意の列を手動上書きできる。プリセットは補助であり、最終値は保存時のフォーム値。
+
+### 資格要件（集計タブ、`apiQualification` in Totals.gs）
+
+根拠資料: 資格要件チェックリスト 2026.06.21RVS。飛行日誌から導けるものだけ自動判定し、それ以外は設定の有効期限入力で警告する。
+
+- 最終乗務日（block > 0 または着陸ありのレグ、SIM は除く）からの経過日数。連続 `QUAL_RETRAIN_DAYS`(60) 日以上で復帰訓練 → `over`、14 日前から `warn`。
+- 直近 `QUAL_RECENCY_DAYS`(90) 日の離陸・着陸回数（各 3 回未満で `over`）。
+- 訓練審査 M11/M12/M21/M22: 飛行内容がそのコードで始まるレグの最終日を前回実施日とし、次回基準月 = 前回 + 12 か月、実施期間 = 基準月 ±1 か月（`due`）、超過で `over`。M12 = 技能基準月、M21 = 基準月 + 6 か月という関係は表示のみ（それぞれ独立に前回 + 12 か月で判定）。
+- 有効期限（Settings `exp_pe`, `exp_pea`, `exp_english`, `exp_competency`, `exp_passport`, `exp_visa`）: 残日数と警告閾値（PE/PEA 45 日、英語・特定操縦技能 90 日、パスポート/VISA 180 日 = `QUAL_EXPIRIES`）。これらの設定変更では年次シートは再生成しない。
+- `apiQualification(today)` は `today` を省略可（テストでは固定日を渡す）。
 
 ### UI の表記規則
 

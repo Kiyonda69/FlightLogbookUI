@@ -47,7 +47,8 @@ var FLIGHT_COLUMNS = [
   { key: 'remarks',         kind: 'text', label: '自由欄' },
   { key: 'source',          kind: 'meta', label: 'Source' },
   { key: 'created_at',      kind: 'meta', label: 'Created' },
-  { key: 'updated_at',      kind: 'meta', label: 'Updated' }
+  { key: 'updated_at',      kind: 'meta', label: 'Updated' },
+  { key: 'crew',            kind: 'text', label: '編成' }   // "M2/0" = pattern id / my index (see CrewRules.html); "SPLIT", "SIM" or blank
 ];
 
 /** Keys that are summed for 項小計 / 前項までの合計 / 合計. Order = report column order. */
@@ -90,8 +91,37 @@ var SETTINGS_DEFAULTS = {
   time_basis: 'UTC',
   default_aircraft_type: 'B77W',
   default_takeoffs: 1,
-  default_landings: 1
+  default_landings: 1,
+  // 資格要件 (有効期限, YYYY-MM-DD). Blank = not tracked.
+  exp_pe: '',          // PE 航空身体検査証明 有効期限
+  exp_pea: '',         // PEA 有効期限 (PE 受検月の 6 か月後)
+  exp_english: '',     // 航空英語能力証明 有効期限
+  exp_competency: '',  // 特定操縦技能審査 期間満了日
+  exp_passport: '',    // パスポート
+  exp_visa: ''         // VISA
 };
+
+/** Qualification-tracking settings and the number of days before expiry at which to warn. */
+var QUAL_EXPIRIES = [
+  { key: 'exp_pe', label: 'PE (航空身体検査証明)', warnDays: 45 },
+  { key: 'exp_pea', label: 'PEA', warnDays: 45 },
+  { key: 'exp_english', label: '航空英語能力証明', warnDays: 90 },
+  { key: 'exp_competency', label: '特定操縦技能審査 満了日', warnDays: 90 },
+  { key: 'exp_passport', label: 'パスポート', warnDays: 180 },
+  { key: 'exp_visa', label: 'VISA', warnDays: 180 }
+];
+
+/** Recurrent training / check codes recognised in 飛行内容 and their nominal interval in months. */
+var QUAL_TRAINING = [
+  { code: 'M11', label: 'M11', months: 12 },
+  { code: 'M12', label: 'M12 (技能基準月)', months: 12 },
+  { code: 'M21', label: 'M21 (基準月 + 6 か月)', months: 12 },
+  { code: 'M22', label: 'M22', months: 12 }
+];
+var QUAL_WINDOW_MONTHS = 1;      // 実施月: 基準月の -1 〜 +1 か月
+var QUAL_RETRAIN_DAYS = 60;      // 連続 60 日以上乗務中断 → 復帰訓練
+var QUAL_RECENCY_DAYS = 90;      // 90 日以内の離着陸回数
+var QUAL_RECENCY_LANDINGS = 3;
 
 function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
 
@@ -122,9 +152,11 @@ function setupSpreadsheet() {
     f.setFrozenRows(1);
     f.getRange(1, 1, 1, FLIGHT_COLUMNS.length).setFontWeight('bold').setBackground('#e8eaed');
     // Keep dates / clocks / free text as plain text so Sheets never re-interprets them
-    // (B..I = date..flight_no, AC..AF = remarks..updated_at). Writes also re-apply this per row.
+    // (B..I = date..flight_no, AC.. = remarks..crew). Writes also re-apply this per row.
     f.getRange(2, colIndex_('date') + 1, f.getMaxRows() - 1, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
     f.getRange(2, colIndex_('remarks') + 1, f.getMaxRows() - 1, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');
+  } else {
+    ensureFlightsHeader_(f);
   }
 
   // Aircraft master
@@ -163,6 +195,23 @@ function setupSpreadsheet() {
   if (def && def.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(def);
 
   return 'OK';
+}
+
+/**
+ * Add header cells (and text format) for columns appended to FLIGHT_COLUMNS after the sheet was
+ * created. Existing data is untouched; new columns simply read as blank for old rows.
+ */
+function ensureFlightsHeader_(sh) {
+  sh = sh || ss_().getSheetByName(SHEET_FLIGHTS);
+  if (!sh) return 0;
+  var keys = FLIGHT_COLUMNS.map(function (c) { return c.key; });
+  var have = sh.getLastColumn();
+  if (have >= keys.length) return 0;
+  if (sh.getMaxColumns() < keys.length) sh.insertColumnsAfter(sh.getMaxColumns(), keys.length - sh.getMaxColumns());
+  var missing = keys.slice(have);
+  sh.getRange(1, have + 1, 1, missing.length).setValues([missing]).setFontWeight('bold').setBackground('#e8eaed');
+  sh.getRange(2, have + 1, sh.getMaxRows() - 1, missing.length).setNumberFormat('@');
+  return missing.length;
 }
 
 /** Adds a custom menu when the spreadsheet is opened. */
