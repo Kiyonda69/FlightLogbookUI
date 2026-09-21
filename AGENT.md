@@ -32,6 +32,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   ├── Report.gs            年次 JCAB 様式シート「飛行日誌_YYYY」（12 か月ブロック、Numbers の年シート相当）を書き込みのたびに自動再生成
 │   ├── Import.gs            CSV / 繰越 JSON 取込（importCarryForwardFromDrive / importCarryForwardPrompt は引数なしでエディタ・メニューから実行可）
 │   ├── Crew.gs              CrewRules.html をサーバー側で評価 (loadCrewRules_, apiCrewPatterns, apiAllocateCrew)
+│   ├── Qual.gs              「資格要件チェックリスト」シート（CAP 様式 A1:J27 の再現）を飛行日誌と設定から自動更新
 │   ├── CrewRules.html       【共有】編成パターン表 CREW_PATTERNS と allocateCrew()（UI とサーバーの唯一の正）
 │   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 設定・取込）
 │   ├── Style.html           CSS
@@ -133,7 +134,20 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 直近 `QUAL_RECENCY_DAYS`(90) 日の離陸・着陸回数（各 3 回未満で `over`）。
 - 訓練審査 M11/M12/M21/M22: 飛行内容がそのコードで始まるレグの最終日を前回実施日とし、次回基準月 = 前回 + 12 か月、実施期間 = 基準月 ±1 か月（`due`）、超過で `over`。M12 = 技能基準月、M21 = 基準月 + 6 か月という関係は表示のみ（それぞれ独立に前回 + 12 か月で判定）。
 - 有効期限（Settings `exp_pe`, `exp_pea`, `exp_english`, `exp_competency`, `exp_passport`, `exp_visa`）: 残日数と警告閾値（PE/PEA 45 日、英語・特定操縦技能 90 日、パスポート/VISA 180 日 = `QUAL_EXPIRIES`）。これらの設定変更では年次シートは再生成しない。
-- `apiQualification(today)` は `today` を省略可（テストでは固定日を渡す）。
+- `apiQualification(today)` は `today` を省略可（テストでは固定日を渡す）。リスト型の期限（航空英語・特定操縦技能）は最新日付で判定。
+
+### 資格要件チェックリスト シート（`Qual.gs`）
+
+- 原本 `資格_要件チェックリスト_20260621.xlsx` の **CAP** シート A1:J27 をセル単位で再現（文字列・結合 B3:C3, D3:E3, C12:J15 各行, B17:J27 各行 + B19:J20, A19:A20・列幅・行高・灰色 #C0C0C0 の見出し・太線/細線・配置・フォントサイズ 12/11/10/8）。注意事項の全文は `QUAL_NOTES`。見た目を変えたら `QUAL_DESIGN_VERSION` を上げる。
+- 記入内容（`qualSheetData_` → `planQualSheet_`）:
+  - D1 所属／社員番号／氏名 = Settings `department` / `employee_no` / `pilot_name`。
+  - 行 3 基準月: `base_skill`（空なら最後の M12 または CACK の月）→ CACK/M12、+6 か月 → M21/M22、`base_route`、`base_dit`（空なら最後の実施日の月）、PE/PEA は有効期限の月。
+  - 行 5 前回実施日 = 各列の最新日付。行 6〜10 = 年度（4 月始まり）FY-1〜FY+3 の実施日（列 A に「2026年度／実施日」と年度を入れる）。H8:H10 は原本どおり「－」。
+  - M12/M21/M22 = 飛行内容がそのコードで始まるレグの日付。CACK = 飛行内容 CACK/M11 + `dates_cack`。ROUTE CHK/DIT = 飛行内容 ROUTE/DIT + `dates_route`/`dates_dit`。63 歳付加訓練/PE/PEA 実施日 = `dates_age63`/`dates_pe`/`dates_pea`。PE/PEA セルは「有効期限 … / 実施日 …」の 2 行。
+  - 行 12〜15 = `exp_english`（最大 2）、`exp_competency`（最大 5）、`exp_passport`、`exp_visa` を「(1) 2027 / 03 / 31」形式で。日付リストはカンマ区切り（`dateList_` が不正値を捨てる）。
+  - 空欄は原本のプレースホルダ文字列（「        年       月       日」等）をそのまま出す。
+- 更新タイミング: `refreshYearSheets_` の末尾（レグの追加・更新・削除・取込）と `apiSaveSettings`（すべての設定変更）。レイアウト済みなら値の `setValues` 1 回のみ（L1 に「更新 日付」）。メニュー「資格要件チェックリストを再生成」= `apiRebuildQualSheet()`（強制再構築）。
+- 印刷設定（横・1 ページ収まり）は API で設定できないので手動。
 
 ### UI の表記規則
 

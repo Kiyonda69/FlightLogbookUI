@@ -148,7 +148,7 @@
       <div><label>計器飛行</label><input class="dur" name="ifr" placeholder="H:MM"></div>
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
-      <div><label>記入する飛行時間 (8項, 自動)</label><input class="dur" name="block" placeholder="H:MM"></div>
+      <div><label>記入する飛行時間</label><input class="dur" name="block" placeholder="H:MM"></div>
     </div>
 
     <details>
@@ -212,8 +212,8 @@
     </div>
   </div>
   <div class="card">
-    <h2>資格 有効期限</h2>
-    <p class="hint">入力すると集計タブの「資格要件」に残日数と警告（PE/PEA は 45 日前、航空英語・特定操縦技能は 90 日前、パスポート・VISA は 180 日前）が表示されます。訓練審査（M11/M12/M21/M22）と最終乗務日は飛行日誌の記録から自動で判定します。</p>
+    <h2>資格要件チェックリスト</h2>
+    <p class="hint">スプレッドシートの「資格要件チェックリスト」シート（CAP 様式）は、ここで入力した内容と飛行日誌の記録（飛行内容が M12 / M21 / M22 / CACK / M11 / ROUTE / DIT のレグ）から自動で更新されます。複数の日付はカンマ区切り（例: 2025-04-15, 2026-04-10）。集計タブの「資格要件」にも残日数と警告が出ます。</p>
     <div class="grid" id="expGrid"></div>
   </div>
   <div class="card">
@@ -904,11 +904,22 @@ function buildCarryGrid(st) {
     g.appendChild(d);
   });
 }
-var EXP_KEYS = [['exp_pe', 'PE (航空身体検査証明)'], ['exp_pea', 'PEA'], ['exp_english', '航空英語能力証明'], ['exp_competency', '特定操縦技能審査 満了日'], ['exp_passport', 'パスポート'], ['exp_visa', 'VISA']];
+// [key, label, input type]  — 'list' = comma-separated dates
+var EXP_KEYS = [
+  ['department', '所属', 'text'], ['employee_no', '社員番号', 'text'],
+  ['base_skill', '技能基準月 (CACK / M12)', 'month'], ['base_route', 'ROUTE CHK 基準月', 'month'], ['base_dit', 'DIT 基準月', 'month'],
+  ['dates_cack', 'CACK 実施日', 'list'], ['dates_route', 'ROUTE CHK 実施日', 'list'], ['dates_dit', 'DIT 実施日', 'list'], ['dates_age63', '63歳以上68歳未満付加訓練 実施日', 'list'],
+  ['dates_pe', 'PE 実施日', 'list'], ['exp_pe', 'PE 有効期限', 'date'], ['dates_pea', 'PEA 実施日', 'list'], ['exp_pea', 'PEA 有効期限', 'date'],
+  ['exp_english', '航空英語能力証明 有効期限 (最大 2)', 'list'], ['exp_competency', '特定操縦技能審査 期間満了日 (最大 5)', 'list'],
+  ['exp_passport', 'パスポート 有効期限', 'date'], ['exp_visa', 'VISA 有効期限', 'date']
+];
 function fillSettings(st) {
   ['pilot_name', 'licence_no', 'time_basis', 'default_aircraft_type'].forEach(function (k) { $('#s_' + k).value = st[k] || ''; });
   var g = $('#expGrid');
-  if (!g.children.length) g.innerHTML = EXP_KEYS.map(function (e) { return '<div><label>' + esc(e[1]) + '</label><input type="date" id="s_' + e[0] + '"></div>'; }).join('');
+  if (!g.children.length) g.innerHTML = EXP_KEYS.map(function (e) {
+    var type = e[2] === 'list' ? 'text' : e[2];
+    return '<div' + (e[2] === 'list' ? ' style="grid-column: span 2"' : '') + '><label>' + esc(e[1]) + '</label><input type="' + type + '" id="s_' + e[0] + '"' + (e[2] === 'list' ? ' placeholder="YYYY-MM-DD, YYYY-MM-DD"' : '') + '></div>';
+  }).join('');
   EXP_KEYS.forEach(function (e) { $('#s_' + e[0]).value = st[e[0]] || ''; });
 }
 function saveSettings() {

@@ -92,11 +92,22 @@ var SETTINGS_DEFAULTS = {
   default_aircraft_type: 'B77W',
   default_takeoffs: 1,
   default_landings: 1,
-  // 資格要件 (有効期限, YYYY-MM-DD). Blank = not tracked.
+  // 資格要件チェックリスト (Qual.gs). Dates are YYYY-MM-DD; "dates_*" / list fields are comma-separated.
+  department: '',      // 所属
+  employee_no: '',     // 社員番号
+  base_skill: '',      // 技能基準月 (YYYY-MM or M); blank = month of the last M12 / CACK
+  base_route: '',      // ROUTE CHK 基準月
+  base_dit: '',        // DIT 基準月
+  dates_cack: '',      // CACK 実施日 (logbook 飛行内容 CACK / M11 も自動集計)
+  dates_route: '',     // ROUTE CHK 実施日
+  dates_dit: '',       // DIT 実施日
+  dates_age63: '',     // 63歳以上68歳未満付加訓練 実施日
+  dates_pe: '',        // PE 実施日
+  dates_pea: '',       // PEA 実施日
   exp_pe: '',          // PE 航空身体検査証明 有効期限
   exp_pea: '',         // PEA 有効期限 (PE 受検月の 6 か月後)
-  exp_english: '',     // 航空英語能力証明 有効期限
-  exp_competency: '',  // 特定操縦技能審査 期間満了日
+  exp_english: '',     // 航空英語能力証明 有効期限 (≤2, comma-separated)
+  exp_competency: '',  // 特定操縦技能審査 期間満了日 (≤5)
   exp_passport: '',    // パスポート
   exp_visa: ''         // VISA
 };
@@ -221,6 +232,7 @@ function onOpen() {
     .addItem('繰越合計を取込 (JSON 貼り付け)', 'importCarryForwardPrompt')
     .addItem('API パスワードを設定', 'setApiPasswordPrompt')
     .addItem('年次帳票をすべて再生成', 'rebuildAllYearReports')
+    .addItem('資格要件チェックリストを再生成', 'apiRebuildQualSheet')
     .addItem('Flights シートの書式を修復', 'repairFlightsSheetFormats')
     .addItem('マスター再構築 (Flights から)', 'rebuildMastersFromFlights')
     .addToUi();

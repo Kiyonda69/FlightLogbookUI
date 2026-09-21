@@ -187,9 +187,12 @@ function apiSaveSettings(obj) {
     });
   }
   settingsCache_ = null;
-  // Carry-forward, pilot name and licence number all appear on the year sheets → rebuild them all.
+  // Carry-forward, pilot name and licence number all appear on the year sheets → rebuild them all
+  // (which also refreshes the checklist); any other change refreshes the checklist only.
   if (touchedTotals || obj.pilot_name !== undefined || obj.licence_no !== undefined || obj.time_basis !== undefined) {
     refreshYearSheets_(null);
+  } else {
+    rebuildQualSheet_(null, false);
   }
   return getSettings_();
 }

@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
-GS_ORDER = ["Schema.gs", "Util.gs", "Api.gs", "Totals.gs", "Report.gs", "Import.gs", "Crew.gs", "Code.gs"]
+GS_ORDER = ["Schema.gs", "Util.gs", "Api.gs", "Totals.gs", "Report.gs", "Import.gs", "Crew.gs", "Qual.gs", "Code.gs"]
 
 SHIM = """
 <script>

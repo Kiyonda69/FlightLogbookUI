@@ -59,7 +59,7 @@
       <div><label>計器飛行</label><input class="dur" name="ifr" placeholder="H:MM"></div>
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
-      <div><label>記入する飛行時間 (8項, 自動)</label><input class="dur" name="block" placeholder="H:MM"></div>
+      <div><label>記入する飛行時間</label><input class="dur" name="block" placeholder="H:MM"></div>
     </div>
 
     <details>
@@ -123,8 +123,8 @@
     </div>
   </div>
   <div class="card">
-    <h2>資格 有効期限</h2>
-    <p class="hint">入力すると集計タブの「資格要件」に残日数と警告（PE/PEA は 45 日前、航空英語・特定操縦技能は 90 日前、パスポート・VISA は 180 日前）が表示されます。訓練審査（M11/M12/M21/M22）と最終乗務日は飛行日誌の記録から自動で判定します。</p>
+    <h2>資格要件チェックリスト</h2>
+    <p class="hint">スプレッドシートの「資格要件チェックリスト」シート（CAP 様式）は、ここで入力した内容と飛行日誌の記録（飛行内容が M12 / M21 / M22 / CACK / M11 / ROUTE / DIT のレグ）から自動で更新されます。複数の日付はカンマ区切り（例: 2025-04-15, 2026-04-10）。集計タブの「資格要件」にも残日数と警告が出ます。</p>
     <div class="grid" id="expGrid"></div>
   </div>
   <div class="card">

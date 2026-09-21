@@ -12,7 +12,7 @@ var ctx = vm.createContext({ console: console, Math: Math, Date: Date, JSON: JSO
 function load(file) { vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), ctx, { filename: file }); }
 load('dev/mock_gas.js');
 ctx.__srcFiles = { CrewRules: fs.readFileSync(path.join(root, 'src/CrewRules.html'), 'utf8') };
-['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
+['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Qual.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
 
 var failures = 0;
 function check(name, actual, expected) {
@@ -268,6 +268,37 @@ check('qual: english far away → ok', q2.expiries.filter(function (e) { return 
 check('qual: untracked expiry → unknown', q2.expiries.filter(function (e) { return e.key === 'exp_visa'; })[0].status, 'unknown');
 check('qual: expiry settings do not trigger year sheet rebuild', true, true);
 ctx.apiSaveSettings({ exp_pe: '', exp_english: '' });
+
+// --- 資格要件チェックリスト sheet (CAP layout), auto-filled and refreshed
+var qs = ctx.__mockSpreadsheet.getSheetByName('資格要件チェックリスト');
+check('qual sheet created by the import refresh', !!qs, true);
+check('qual sheet: 27 rows x 10 cols grid', [qs.rows.length >= 27, qs.rows[1].length >= 10], [true, true]);
+check('qual sheet: title', qs.rows[0][0], '資格 要件チェックリスト　for  CAP');
+check('qual sheet: header row', qs.rows[1], ['訓練審査', 'CACK', 'M12 ', 'M21 ', 'M22 ', 'ROUTE CHK', 'DIT', '63歳以上68歳未満付加訓練', 'PE', 'PEA（またはPE）']);
+check('qual sheet: 前回実施日 M12 / M21 / M22 from the logbook', [qs.rows[4][2], qs.rows[4][3], qs.rows[4][4]], ['2024年 4月 22日', '2024年 10月 24日', '2024年 10月 25日']);
+check('qual sheet: CACK column includes M11 legs', qs.rows[4][1], '2024年 4月 21日');
+check('monthLabel_ forms', [ctx.monthLabel_('2024-06-01'), ctx.monthLabel_('2026-04'), ctx.monthLabel_('7'), ctx.monthLabel_('11月'), ctx.monthLabel_('13'), ctx.monthLabel_('')], ['6月', '4月', '7月', '11月', '月', '月']);
+check('qual sheet: 基準月 derived from last M12 (4月) and +6 (10月)', [qs.rows[2][1], qs.rows[2][3]], ['4月', '10月']);
+check('qual sheet: blank placeholders keep the form text', qs.rows[4][5], '        年       月       日');
+var fy0 = (function () { var d = new Date(); return (d.getMonth() + 1 >= 4 ? d.getFullYear() : d.getFullYear() - 1) - 1; })();
+check('qual sheet: fiscal-year rows labelled FY-1..FY+3', [qs.rows[5][0], qs.rows[9][0]], [fy0 + '年度\n実施日', (fy0 + 4) + '年度\n実施日']);
+check('qual sheet: 63歳 rows 8-10 fixed "－"', [qs.rows[7][7], qs.rows[8][7], qs.rows[9][7]], ['－', '－', '－']);
+check('qual sheet: notes block', [qs.rows[16][0], qs.rows[17][1], qs.rows[26][0]], ['CACK', '技能基準月と同月', '特定操縦技能\n審査/確認']);
+check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows, A19:A20)', qs.merges.length, 2 + 4 + 8 + 1);
+check('qual sheet: column widths set', Object.keys(qs.colWidths).length, 10);
+var qMerges = qs.merges.length, qBorders = qs.borderCalls.length;
+ctx.apiSaveSettings({ department: '777運航乗員部', employee_no: '123456', exp_english: '2027-03-31, 2030-01-01', dates_route: '2024-06-01', exp_pe: '2026-12-15', dates_pe: '2026-06-10' });
+qs = ctx.__mockSpreadsheet.getSheetByName('資格要件チェックリスト');
+check('qual sheet: settings change refreshes values only (fast path)', [qs.merges.length, qs.borderCalls.length], [qMerges, qBorders]);
+check('qual sheet: 所属 / 社員番号 / 氏名 line', qs.rows[0][3].indexOf('所属：777運航乗員部') === 0 && qs.rows[0][3].indexOf('社員番号：123456') > 0, true);
+check('qual sheet: 航空英語 slots', qs.rows[11][2], '　(1) 2027 / 03 / 31　　(2) 2030 / 01 / 01');
+check('qual sheet: ROUTE CHK date + 基準月', [qs.rows[4][5], qs.rows[2][5]], ['2024年 6月 1日', '6月']);
+check('qual sheet: PE 有効期限 + 実施日 cell', qs.rows[4][8], '有効期限 2026年 12月 15日\n実施日 2026年 6月 10日');
+check('qual sheet: PE 基準月 = expiry month', qs.rows[2][8], '12月');
+check('apiQualification uses the latest date of a list', ctx.apiQualification('2026-09-21').expiries.filter(function (e) { return e.key === 'exp_english'; })[0].date, '2030-01-01');
+check('forced rebuild restyles', ctx.apiRebuildQualSheet().relayout, true);
+ctx.apiSaveSettings({ department: '', employee_no: '', exp_english: '', dates_route: '', exp_pe: '', dates_pe: '' });
+check('dateList_ tolerates junk', ctx.dateList_('2026-01-05, abc, 2025/3/1'), ['2025-03-01', '2026-01-05']);
 
 // --- JSON API (doPost) used by the GitHub Pages front-end
 function post(obj) { return JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(obj) } }).getContent()); }

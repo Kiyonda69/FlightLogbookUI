@@ -73,7 +73,9 @@ function rebuildAllYearReports() {
  */
 function refreshYearSheets_(fromYear, allSorted, force) {
   var all = allSorted || sortFlights_(readAllFlights_());
-  return reportYears_(all, fromYear).map(function (y) { return rebuildYearSheet_(y, all, force).sheetName; });
+  var names = reportYears_(all, fromYear).map(function (y) { return rebuildYearSheet_(y, all, force).sheetName; });
+  rebuildQualSheet_(all, force);   // 資格要件チェックリスト follows the logbook too
+  return names;
 }
 
 /** Years (strings) that have flights or an existing year sheet, >= fromYear when given. */

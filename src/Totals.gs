@@ -131,11 +131,13 @@ function apiQualification(today) {
     return { code: t.code, label: t.label, last: lastDate, baseMonth: base, windowFrom: from, windowUntil: until, status: status };
   });
 
-  // expiries from settings
+  // expiries from settings (list fields: the LATEST date is the one in force)
   out.expiries = QUAL_EXPIRIES.map(function (e) {
     var v = String(settings[e.key] || '').trim();
     if (!v) return { key: e.key, label: e.label, date: '', status: 'unknown' };
-    var d; try { d = parseDateStr_(v); } catch (err) { return { key: e.key, label: e.label, date: v, status: 'invalid' }; }
+    var list = dateList_(v);
+    if (!list.length) return { key: e.key, label: e.label, date: v, status: 'invalid' };
+    var d = list[list.length - 1];
     var left = daysBetween_(today, d);
     return { key: e.key, label: e.label, date: d, daysLeft: left, warnDays: e.warnDays,
       status: left < 0 ? 'over' : (left <= e.warnDays ? 'warn' : 'ok') };
