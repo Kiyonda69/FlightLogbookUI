@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "logbook-dev",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["dev/serve.py", "8765"],
+      "port": 8765
+    },
+    {
+      "name": "logbook-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dev/api_server.js", "8766"],
+      "port": 8766
+    }
+  ]
+}

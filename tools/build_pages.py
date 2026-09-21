@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+"""build_pages.py — build the static front-end (GitHub Pages) from src/.
+
+Produces docs/index.html: Index.html with Style.html + Script.html inlined and a shim that
+replaces google.script.run with fetch() calls to the Apps Script JSON API (doPost in Code.gs).
+The API URL and token are entered once in the page's connection panel and kept in localStorage.
+
+  python tools/build_pages.py            # writes docs/index.html + docs/.nojekyll
+"""
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SRC = ROOT / "src"
+DOCS = ROOT / "docs"
+
+CONN_BAR = """
+<div id="connBar" class="conn" style="display:none">
+  <form id="connForm" onsubmit="return false;">
+    <b>接続設定</b>
+    <input id="connUrl" placeholder="Apps Script ウェブアプリ URL (…/exec)" autocomplete="off">
+    <input id="connToken" placeholder="API_TOKEN" autocomplete="off">
+    <button class="btn primary" id="connSave" type="submit">接続</button>
+    <button class="btn" id="connClose" type="button">閉じる</button>
+    <span class="hint" id="connStatus"></span>
+  </form>
+</div>
+"""
+
+CONN_CSS = """
+<style>
+  .conn { background: #fff8e1; border-bottom: 1px solid #f0d78c; padding: 8px 16px; }
+  .conn form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .conn input { flex: 1 1 260px; }
+  header .connlink { margin-left: auto; color: #9aa0a6; font-size: 12px; cursor: pointer; text-decoration: underline; }
+</style>
+"""
+
+SHIM = r"""
+<script>
+/* ---- google.script.run shim: fetch() to the Apps Script JSON API (doPost) ---- */
+(function () {
+  var KEY_URL = 'logbook.apiUrl', KEY_TOKEN = 'logbook.apiToken';
+  function get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  function callApi(fn, args) {
+    var url = get(KEY_URL), token = get(KEY_TOKEN);
+    if (!url || !token) return Promise.reject(new Error('接続設定 (API URL / TOKEN) が未設定です'));
+    return fetch(url, { method: 'POST', body: JSON.stringify({ token: token, fn: fn, args: args }), redirect: 'follow' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) { if (!j.ok) throw new Error(j.error || 'API error'); return j.result; });
+  }
+
+  function runner() {
+    var ok = function () {}, fail = function (e) { console.error(e); };
+    var p = new Proxy({}, { get: function (_, name) {
+      if (name === 'withSuccessHandler') return function (f) { ok = f; return p; };
+      if (name === 'withFailureHandler') return function (f) { fail = f; return p; };
+      if (name === 'withUserObject') return function () { return p; };
+      return function () {
+        callApi(String(name), Array.prototype.slice.call(arguments))
+          .then(ok, function (e) { fail({ message: e.message }); showBar(e.message); });
+      };
+    }});
+    return p;
+  }
+  window.google = { script: {} };
+  Object.defineProperty(window.google.script, 'run', { get: runner });
+
+  function showBar(msg) {
+    var bar = document.getElementById('connBar'); if (!bar) return;
+    bar.style.display = '';
+    document.getElementById('connUrl').value = get(KEY_URL);
+    document.getElementById('connToken').value = get(KEY_TOKEN);
+    if (msg) document.getElementById('connStatus').textContent = msg;
+  }
+  window.addEventListener('DOMContentLoaded', function () {
+    var link = document.createElement('span');
+    link.className = 'connlink'; link.textContent = '接続設定';
+    link.addEventListener('click', function () { showBar(''); });
+    document.querySelector('header').appendChild(link);
+    document.getElementById('connClose').addEventListener('click', function () { document.getElementById('connBar').style.display = 'none'; });
+    document.getElementById('connSave').addEventListener('click', function () {
+      set(KEY_URL, document.getElementById('connUrl').value.trim());
+      set(KEY_TOKEN, document.getElementById('connToken').value.trim());
+      var st = document.getElementById('connStatus'); st.textContent = '接続確認中…';
+      callApi('apiPing', []).then(function (r) {
+        st.textContent = '接続 OK (' + (r.spreadsheet || '') + ')';
+        setTimeout(function () { location.reload(); }, 600);
+      }, function (e) { st.textContent = '失敗: ' + e.message; });
+    });
+    if (!get(KEY_URL) || !get(KEY_TOKEN)) showBar('Apps Script の URL と API_TOKEN を入力してください');
+  });
+})();
+</script>
+"""
+
+
+def build():
+    html = (SRC / "Index.html").read_text(encoding="utf-8")
+    style = (SRC / "Style.html").read_text(encoding="utf-8")
+    script = (SRC / "Script.html").read_text(encoding="utf-8")
+    html = html.replace("<?!= include('Style'); ?>", style + CONN_CSS)
+    html = html.replace("<?!= include('Script'); ?>", SHIM + script)
+    html = html.replace("<nav>", CONN_BAR + "<nav>", 1)
+    html = html.replace('<base target="_top">', '')
+    html = html.replace("<head>", "<head>\n  <!-- generated by tools/build_pages.py — do not edit; edit src/ and rebuild -->", 1)
+    html = html.replace("<title>", "<title>", 1)
+    if "<title>" not in html:
+        html = html.replace("</head>", "  <title>飛行日誌 - Flight Logbook</title>\n</head>", 1)
+    DOCS.mkdir(exist_ok=True)
+    (DOCS / "index.html").write_text(html, encoding="utf-8")
+    (DOCS / ".nojekyll").write_text("", encoding="utf-8")
+    return DOCS / "index.html"
+
+
+if __name__ == "__main__":
+    out = build()
+    print("wrote", out, "(%d bytes)" % out.stat().st_size)

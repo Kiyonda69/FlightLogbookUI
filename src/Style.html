@@ -1,0 +1,55 @@
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1f2933; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #1a73e8; --accent-ink: #fff; --ok: #188038; --warn: #b06000; --err: #c5221f;
+    --pic: #e8f0fe; --sic: #fce8e6; --sim: #e6f4ea;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; background: var(--bg); color: var(--ink); font-size: 14px; }
+  header { background: #202124; color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header .stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #dadce0; }
+  header .stats b { color: #fff; font-size: 14px; }
+  nav { display: flex; gap: 4px; padding: 8px 16px 0; background: #fff; border-bottom: 1px solid var(--line); }
+  nav button { border: 0; background: transparent; padding: 8px 14px; cursor: pointer; font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent; }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+  .tab { display: none; } .tab.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
+  .grid.narrow { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  input, select, textarea { width: 100%; padding: 7px 8px; border: 1px solid #cfd4da; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff; }
+  input:focus, select:focus { outline: 2px solid #c2dbff; border-color: var(--accent); }
+  input.mono { font-family: "SF Mono", Consolas, monospace; text-transform: uppercase; }
+  input.dur { font-family: "SF Mono", Consolas, monospace; text-align: right; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #cfd4da; background: #fff; cursor: pointer; font-size: 14px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger { color: var(--err); border-color: #f4c7c3; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.small { padding: 4px 8px; font-size: 12px; }
+  .seg { display: inline-flex; border: 1px solid #cfd4da; border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .hint { font-size: 12px; color: var(--muted); }
+  details summary { cursor: pointer; color: var(--accent); font-size: 13px; margin: 6px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; white-space: nowrap; }
+  th { background: #f1f3f4; font-weight: 600; font-size: 12px; position: sticky; top: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: "SF Mono", Consolas, monospace; }
+  tr.total td { font-weight: 600; background: #fef7e0; }
+  tr.pic td:first-child { border-left: 4px solid #1a73e8; }
+  tr.sic td:first-child { border-left: 4px solid #d93025; }
+  tr.sim td:first-child { border-left: 4px solid #188038; }
+  .scroll { overflow: auto; max-height: 70vh; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
+  #toast.show { opacity: 1; }
+  #toast.err { background: var(--err); }
+  .kpi { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .kpi div { background: #f8f9fa; border-radius: 6px; padding: 8px 10px; }
+  .kpi label { margin: 0; }
+  .kpi b { font-size: 18px; font-family: "SF Mono", Consolas, monospace; }
+  @media (max-width: 640px) { main { padding: 10px; } .card { padding: 10px; } }
+</style>

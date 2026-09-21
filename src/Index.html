@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <base target="_top">
+  <?!= include('Style'); ?>
+</head>
+<body>
+<header>
+  <h1>✈ 飛行日誌</h1>
+  <div class="stats" id="hdrStats">読み込み中…</div>
+</header>
+<nav>
+  <button data-tab="entry" class="active">入力</button>
+  <button data-tab="list">一覧・編集</button>
+  <button data-tab="summary">集計</button>
+  <button data-tab="report">帳票 (JCAB)</button>
+  <button data-tab="settings">設定・取込</button>
+</nav>
+<main>
+
+<!-- ================= 入力 ================= -->
+<section class="tab active" id="tab-entry">
+  <form id="flightForm" class="card" autocomplete="off" onsubmit="return false;">
+    <h2 id="formTitle">新規レグ入力</h2>
+    <input type="hidden" name="id">
+    <div class="grid">
+      <div><label>月日</label><input type="date" name="date" required></div>
+      <div><label>航空機の型式</label><input class="mono" name="aircraft_type" list="dlTypes" required></div>
+      <div><label>登録記号</label><input class="mono" name="registration" list="dlRegs" required></div>
+      <div><label>出発地 (ICAO)</label><input class="mono" name="dep" list="dlApts" maxlength="4" required></div>
+      <div><label>到着地 (ICAO)</label><input class="mono" name="arr" list="dlApts" maxlength="4" required></div>
+      <div><label>出発時刻 <span id="tzLabel">UTC</span></label><input class="dur" name="dep_time" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div>
+      <div><label>到着時刻 <span class="tz">UTC</span></label><input class="dur" name="arr_time" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div>
+      <div><label>飛行内容 (便名等)</label><input name="flight_no" placeholder="JL10"></div>
+      <div><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
+      <div><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
+      <div><label>飛行時間 (自動)</label><input class="dur" name="block" placeholder="H:MM"></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <label style="margin:0">乗務区分</label>
+      <div class="seg" id="roleSeg">
+        <button type="button" data-role="pic" class="active">機長 (PIC)</button>
+        <button type="button" data-role="sic">副操縦士 (SIC)</button>
+        <button type="button" data-role="split">分割 (PIC+SIC)</button>
+        <button type="button" data-role="sim">SIM</button>
+      </div>
+      <span class="hint" id="roleHint">飛行時間を PIC と PIC 野外飛行に自動配分します</span>
+    </div>
+
+    <div class="grid narrow" style="margin-top:10px">
+      <div id="splitPic" style="display:none"><label>うち PIC 時間</label><input class="dur" name="_split_pic" placeholder="H:MM"></div>
+      <div><label>夜間飛行</label><input class="dur" name="_night" placeholder="H:MM"></div>
+      <div><label>計器飛行</label><input class="dur" name="ifr" placeholder="H:MM"></div>
+      <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
+      <div><label>自由欄</label><input name="remarks"></div>
+    </div>
+
+    <details>
+      <summary>JCAB 全項目を直接編集</summary>
+      <div class="grid narrow" id="detailGrid"></div>
+    </details>
+
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="btnSave">保存</button>
+      <button class="btn" id="btnReset" type="button">クリア</button>
+      <button class="btn" id="btnCopyReturn" type="button" title="今の内容から復路を作る">復路を作成</button>
+      <span class="hint" id="formStatus"></span>
+    </div>
+  </form>
+
+  <div class="card">
+    <h2>最近の記録</h2>
+    <div class="scroll"><table id="recentTable"></table></div>
+  </div>
+</section>
+
+<!-- ================= 一覧 ================= -->
+<section class="tab" id="tab-list">
+  <div class="card">
+    <div class="row">
+      <label style="margin:0">月</label>
+      <select id="listMonth" style="width:auto"></select>
+      <button class="btn" id="btnReload">再読込</button>
+      <span class="hint" id="listInfo"></span>
+    </div>
+  </div>
+  <div class="card"><div class="scroll"><table id="listTable"></table></div></div>
+</section>
+
+<!-- ================= 集計 ================= -->
+<section class="tab" id="tab-summary">
+  <div class="card">
+    <div class="row">
+      <label style="margin:0">年</label>
+      <select id="sumYear" style="width:auto"></select>
+      <label style="margin:0 0 0 12px">直近</label>
+      <select id="recencyDays" style="width:auto"><option value="30">30日</option><option value="90" selected>90日</option><option value="180">180日</option><option value="365">365日</option></select>
+    </div>
+  </div>
+  <div class="card"><h2>累計 (繰越 + 全記録)</h2><div class="kpi" id="kpiCum"></div></div>
+  <div class="card"><h2 id="recencyTitle">直近 90 日</h2><div class="kpi" id="kpiRecent"></div></div>
+  <div class="card"><h2 id="sumTitle">月別集計</h2><div class="scroll"><table id="sumTable"></table></div></div>
+  <div class="card"><h2>型式別 (年)</h2><table id="typeTable"></table></div>
+</section>
+
+<!-- ================= 帳票 ================= -->
+<section class="tab" id="tab-report">
+  <div class="card">
+    <h2>JCAB 飛行日誌ページ生成</h2>
+    <p class="hint">選択した月の記録をスプレッドシート内に「飛行日誌_YYYY-MM」シートとして生成します（項小計 / 前項までの合計 / 合計 付き）。印刷は Google スプレッドシート側で行ってください。</p>
+    <div class="row">
+      <input type="month" id="reportMonth" style="width:auto">
+      <button class="btn primary" id="btnReport">生成</button>
+      <a id="reportLink" target="_blank" style="display:none">シートを開く ↗</a>
+    </div>
+  </div>
+  <div class="card"><h2>生成済みシート</h2><ul id="reportList" class="hint"></ul></div>
+</section>
+
+<!-- ================= 設定 ================= -->
+<section class="tab" id="tab-settings">
+  <div class="card">
+    <h2>基本設定</h2>
+    <div class="grid">
+      <div><label>氏名</label><input id="s_pilot_name"></div>
+      <div><label>技能証明番号</label><input id="s_licence_no"></div>
+      <div><label>時刻基準</label><select id="s_time_basis"><option>UTC</option><option>JST</option><option>LT</option></select></div>
+      <div><label>既定の型式</label><input id="s_default_aircraft_type" class="mono"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>繰越合計 (システム導入前の累計)</h2>
+    <p class="hint">Numbers 版から移行する場合は data/carry_forward.json の値。時間は H:MM または分で入力。</p>
+    <div class="grid narrow" id="carryGrid"></div>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="btnSaveSettings">設定を保存</button><span class="hint" id="settingsStatus"></span></div>
+  </div>
+  <div class="card">
+    <h2>CSV 取込 (data/flights.csv)</h2>
+    <div class="row">
+      <input type="file" id="csvFile" accept=".csv,text/csv" style="width:auto">
+      <label style="margin:0"><input type="checkbox" id="csvReplace" style="width:auto"> 重複行を上書き</label>
+      <button class="btn" id="btnImport">取込実行</button>
+    </div>
+    <pre class="hint" id="importResult"></pre>
+  </div>
+</section>
+
+</main>
+
+<datalist id="dlTypes"></datalist>
+<datalist id="dlRegs"></datalist>
+<datalist id="dlApts"></datalist>
+<div id="toast"></div>
+
+<?!= include('Script'); ?>
+</body>
+</html>
