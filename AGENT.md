@@ -30,7 +30,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   ├── Api.gs               UI から呼ぶ関数 (apiBootstrap, apiGetMonth, apiAdd/Update/DeleteFlight, 設定, マスター)
 │   ├── Totals.gs            項小計 / 前項までの合計 / 合計、年間集計、直近 N 日
 │   ├── Report.gs            月次 JCAB 様式シート「飛行日誌_YYYY-MM」を生成
-│   ├── Import.gs            CSV / 繰越 JSON 取込
+│   ├── Import.gs            CSV / 繰越 JSON 取込（importCarryForwardFromDrive / importCarryForwardPrompt は引数なしでエディタ・メニューから実行可）
 │   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 帳票 / 設定・取込）
 │   ├── Style.html           CSS
 │   └── Script.html          クライアント JS（google.script.run 経由でサーバー関数を呼ぶ）
@@ -130,6 +130,7 @@ python tools/build_pages.py
 
 - `.gs` は V8 ランタイムの JavaScript。`node --check` で構文確認できるが、Apps Script API は `dev/mock_gas.js` に無いものを使ったらモックにも追加する。
 - サーバー関数は **`api` 接頭辞 = UI 公開**、末尾 `_` = 非公開（Apps Script の慣例で `google.script.run` から呼べない）。
+- Apps Script エディタの「実行」ボタンは引数を渡せない。引数を取る `api*` 関数には、必要に応じて引数なしのラッパー（例: `importCarryForwardFromDrive`）かメニュー用のプロンプト版（例: `importCarryForwardPrompt`）を用意する。新しい GAS サービス（DriveApp 等）を使ったら `dev/mock_gas.js` にも模擬を追加する。
 - `src/*.gs` の読み込み順は Apps Script 上では無関係だが、`test_logic.js` と `serve.py` では `Schema → Util → Api → Totals → Report → Import → Code` の順。グローバル定数は Schema.gs にまとめる。
 - UI とサーバーの契約は JSON のみ（Date オブジェクトを返さない）。
 

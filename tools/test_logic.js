@@ -93,6 +93,27 @@ var ys = ctx.apiYearSummary('2018');
 check('2018 legs', ys.months.reduce(function (a, x) { return a + x.count; }, 0), 173);
 check('recency shape', typeof ctx.apiRecency(90).count, 'number');
 
+// --- carry-forward import entry points runnable without arguments
+var carryJson = fs.readFileSync(path.join(root, 'data/carry_forward.json'), 'utf8');
+ctx.apiSaveSettings({ carry_forward: { block: 0, takeoffs: 0 } });
+check('carry zeroed', ctx.apiBootstrap().cumulative.block, expected.block - carry.block);
+var drvErr = null; try { ctx.importCarryForwardFromDrive(); } catch (e) { drvErr = e.message; }
+check('drive import: missing file error', /carry_forward\.json がありません/.test(drvErr || ''), true);
+ctx.__mockDriveFiles['carry_forward.json'] = carryJson;
+check('drive import restores carry', ctx.importCarryForwardFromDrive().block, carry.block);
+check('cumulative restored via drive import', ctx.apiBootstrap().cumulative, expected);
+ctx.apiSaveSettings({ carry_forward: { block: 0 } });
+ctx.__mockPromptText = null; ctx.importCarryForwardPrompt();
+check('prompt cancel leaves carry untouched', ctx.getSettings_().carry_forward.block, 0);
+ctx.__mockPromptText = carryJson; ctx.importCarryForwardPrompt();
+check('prompt import restores carry', ctx.getSettings_().carry_forward.block, carry.block);
+check('prompt import shows alert', ctx.__mockAlerts.length, 1);
+var badErr = null; try { ctx.apiImportCarryForward('{"blok": 1}'); } catch (e) { badErr = e.message; }
+check('unknown key rejected', /不明なキー: blok/.test(badErr || ''), true);
+var badJson = null; try { ctx.apiImportCarryForward('nope'); } catch (e) { badJson = e.message; }
+check('invalid json rejected', /JSON を解釈できません/.test(badJson || ''), true);
+check('cumulative still correct', ctx.apiBootstrap().cumulative, expected);
+
 // --- JSON API (doPost) used by the GitHub Pages front-end
 function post(obj) { return JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(obj) } }).getContent()); }
 check('doPost without token configured', post({ fn: 'apiPing' }).ok, false);

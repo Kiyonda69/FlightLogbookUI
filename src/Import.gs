@@ -64,6 +64,39 @@ function dupKey_(f) {
 
 /** Import carry-forward totals from JSON text: { "block": 516817, "takeoffs": 1579, ... } */
 function apiImportCarryForward(jsonText) {
-  var obj = JSON.parse(jsonText);
+  var obj;
+  try { obj = JSON.parse(jsonText); } catch (e) { throw new Error('JSON を解釈できません: ' + e.message); }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('JSON はオブジェクト { "block": 分, ... } である必要があります');
+  var unknown = Object.keys(obj).filter(function (k) { return TOTAL_KEYS.indexOf(k) < 0; });
+  if (unknown.length) throw new Error('不明なキー: ' + unknown.join(', '));
   return apiSaveSettings({ carry_forward: obj });
+}
+
+function carrySummary_(settings) {
+  var c = settings.carry_forward;
+  return '飛行時間 ' + fmtMinutes_(c.block) + ' / 機長 ' + fmtMinutes_(c.pic) + ' / 副操縦士 ' + fmtMinutes_(c.sic) +
+    ' / 離陸 ' + c.takeoffs + ' / 着陸 ' + c.landings;
+}
+
+/**
+ * No-argument version runnable from the Apps Script editor ("実行" button):
+ * upload data/carry_forward.json to Google Drive (any folder), then run this.
+ * The first file named carry_forward.json is used; the result is written to the log.
+ */
+function importCarryForwardFromDrive() {
+  var files = DriveApp.getFilesByName('carry_forward.json');
+  if (!files.hasNext()) throw new Error('Google ドライブに carry_forward.json がありません。data/carry_forward.json をアップロードしてください');
+  var file = files.next();
+  var settings = apiImportCarryForward(file.getBlob().getDataAsString('UTF-8'));
+  Logger.log('繰越合計を取込みました (' + file.getName() + '): ' + carrySummary_(settings));
+  return settings.carry_forward;
+}
+
+/** Spreadsheet menu action: paste the JSON into a dialog. */
+function importCarryForwardPrompt() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.prompt('繰越合計の取込', 'data/carry_forward.json の内容をそのまま貼り付けてください', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  var settings = apiImportCarryForward(res.getResponseText());
+  ui.alert('繰越合計を取込みました', carrySummary_(settings), ui.ButtonSet.OK);
 }

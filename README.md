@@ -17,10 +17,11 @@ Apple Numbers で管理していた飛行日誌を、Google スプレッドシ�
 
 ```bash
 pip install numbers-parser
-python tools/export_numbers.py "FLIGHT LOGBOOK.numbers"
+python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers"
 ```
 
-`data/flights.csv` と `data/carry_forward.json` ができます（リポジトリに同梱済み）。
+`data/flights.csv`（860 レグ）と `data/carry_forward.json` ができます。
+`data/` は個人の飛行記録のため git 管理外（`.gitignore`）です。PC を替えたり再クローンした場合は、このコマンドを再実行するか `data/` を手でコピーしてください。
 
 ### 2. Google スプレッドシートと Apps Script を作る
 
@@ -43,8 +44,10 @@ python tools/export_numbers.py "FLIGHT LOGBOOK.numbers"
 ### 4. 旧データを取り込む
 
 1. UI の「設定・取込」タブ → 「CSV 取込」で `data/flights.csv` を選び「取込実行」。
-2. 同タブの「繰越合計」に `data/carry_forward.json` の値を入力して「設定を保存」
-   （または Apps Script エディタで `apiImportCarryForward('<json の中身>')` を 1 回実行）。
+2. 繰越合計（システム導入前の累計）を設定する。次のいずれか 1 つ:
+   - **Apps Script エディタから**: `data/carry_forward.json` を Google ドライブにアップロードし、関数 `importCarryForwardFromDrive` を実行（初回はドライブの権限承認）。実行ログに取込結果が出ます。
+   - **スプレッドシートのメニューから**: 「飛行日誌 > 繰越合計を取込 (JSON 貼り付け)」を開き、`carry_forward.json` の内容を貼り付けて OK。
+   - **UI から**: 「設定・取込」タブの「繰越合計」に値を手入力して「設定を保存」。
 3. 「集計」タブの累計が Numbers 版 2024 年 10 月の「合計」行（飛行時間 12875:33、離陸 2043、着陸 2049）と一致することを確認。
 
 ## GitHub Pages でフロントエンドを使う（任意）

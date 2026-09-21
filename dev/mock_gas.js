@@ -51,9 +51,33 @@
   Spreadsheet.prototype.getUrl = function () { return 'https://docs.google.com/spreadsheets/d/MOCK'; };
 
   var active = new Spreadsheet();
+  // Ui mock: prompt() answers with g.__mockPromptText (OK) or cancels when it is null.
+  g.__mockPromptText = null; g.__mockAlerts = [];
   g.SpreadsheetApp = {
     getActiveSpreadsheet: function () { return active; },
-    getUi: function () { var m = { addItem: function () { return m; }, addToUi: function () {} }; return { createMenu: function () { return m; } }; }
+    getUi: function () {
+      var m = { addItem: function () { return m; }, addToUi: function () {} };
+      return {
+        Button: { OK: 'OK', CANCEL: 'CANCEL' }, ButtonSet: { OK: 'OK', OK_CANCEL: 'OK_CANCEL' },
+        createMenu: function () { return m; },
+        prompt: function () {
+          var t = g.__mockPromptText;
+          return { getSelectedButton: function () { return t === null ? 'CANCEL' : 'OK'; }, getResponseText: function () { return t || ''; } };
+        },
+        alert: function () { g.__mockAlerts.push(Array.prototype.slice.call(arguments)); }
+      };
+    }
+  };
+  // DriveApp mock: g.__mockDriveFiles = { 'name.json': 'contents' }
+  g.__mockDriveFiles = {};
+  g.DriveApp = {
+    getFilesByName: function (name) {
+      var list = g.__mockDriveFiles.hasOwnProperty(name) ? [name] : [];
+      return {
+        hasNext: function () { return list.length > 0; },
+        next: function () { var n = list.shift(); return { getName: function () { return n; }, getBlob: function () { return { getDataAsString: function () { return g.__mockDriveFiles[n]; } }; } }; }
+      };
+    }
   };
   g.__mockSpreadsheet = active;
 
