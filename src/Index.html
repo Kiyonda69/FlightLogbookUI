@@ -69,29 +69,24 @@
     </details>
 
     <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="btnQueue" type="button" title="この端末に一時保存し、あとで「まとめて保存」で 1 回の通信で書き込みます">キューに追加</button>
-      <button class="btn" id="btnSave" type="button" title="このレグだけを今すぐスプレッドシートに書き込みます（数秒かかります）">今すぐ保存</button>
+      <button class="btn primary" id="btnQueue" type="button" title="この端末に一時保存し、あとで「最近の記録」の「保存」で 1 回の通信で書き込みます">キューに追加</button>
+      <button class="btn" id="btnSave" type="button" title="このレグだけを今すぐスプレッドシートに書き込みます（数秒かかります）">保存</button>
       <button class="btn" id="btnReset" type="button">クリア</button>
       <button class="btn" id="btnCopyReturn" type="button" title="今の内容から復路を作る">復路を作成</button>
       <span class="hint" id="formStatus"></span>
     </div>
-    <p class="hint" style="margin:8px 0 0">「キューに追加」は通信せずにこの端末（ブラウザ）へ一時保存します。複数レグを入力したら下の「まとめて保存」で一括書き込み（年次シートの更新も 1 回で済みます）。</p>
   </form>
 
-  <div class="card pending" id="pendingCard" style="display:none">
-    <h2>未保存レグ <span class="tag" id="pendingCount"></span></h2>
-    <p class="hint">この端末のブラウザに一時保存されているレグです。スプレッドシートにはまだ書き込まれていません（ページを閉じても残ります）。</p>
-    <div class="scroll"><table id="pendingTable"></table></div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn primary" id="btnSaveAll">まとめて保存</button>
-      <button class="btn danger" id="btnClearPending">すべて破棄</button>
-      <span class="hint" id="pendingStatus"></span>
-    </div>
   </div>
 
   <div class="card">
-    <h2>最近の記録</h2>
-    <div class="legend"><span class="pic">PIC（機長）</span><span class="sic">CO（副操縦士 / 単独CO / PUS）</span><span class="split">分割（同一レグにPICとCO時間の両方）</span><span class="sim">SIM / FTD</span></div>
+    <div class="row" style="margin-bottom:8px">
+      <h2 style="margin:0">最近の記録</h2>
+      <button class="btn primary" id="btnSaveAll" style="display:none" title="未保存（グレー）のレグをまとめてスプレッドシートに書き込みます">保存</button>
+      <button class="btn danger small" id="btnClearPending" style="display:none" title="未保存のレグをすべて破棄します">未保存を破棄</button>
+      <span class="hint" id="pendingStatus"></span>
+    </div>
+    <div class="legend"><span class="pend">未保存（この端末に一時保存、スプレッドシート未反映）</span><span class="pic">PIC（機長）</span><span class="sic">CO（副操縦士 / 単独CO / PUS）</span><span class="split">分割（同一レグにPICとCO時間の両方）</span><span class="sim">SIM / FTD</span></div>
     <div class="scroll"><table id="recentTable"></table></div>
   </div>
 </section>

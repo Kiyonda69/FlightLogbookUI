@@ -86,7 +86,6 @@ function reboot(initial) {
     buildDetailGrid();
     buildCarryGrid(b.settings);
     fillSettings(b.settings);
-    renderTable($('#recentTable'), b.recent, { compact: true });
     var lm = $('#listMonth'); lm.innerHTML = '';
     var months = b.months.length ? b.months : [b.today.substring(0, 7)];
     months.forEach(function (m) { var o = document.createElement('option'); o.value = m; o.textContent = m; lm.appendChild(o); });
@@ -344,26 +343,13 @@ function queueFlight() {
   nextLegForm(rec, !!rec.id);
   if (S.boot) renderHeader(S.boot.cumulative);
 }
+/** Pending legs are shown greyed at the top of 最近の記録; the card's 保存 button writes them all. */
 function renderPending() {
-  var l = loadPending(), card = $('#pendingCard');
-  card.style.display = l.length ? '' : 'none';
-  $('#pendingCount').textContent = l.length + ' 件';
-  $('#btnSaveAll').textContent = 'まとめて保存 (' + l.length + ' 件)';
-  if (!l.length) { $('#pendingTable').innerHTML = ''; return; }
-  var h = '<thead><tr><th>#</th><th>月日</th><th>型式</th><th>登録</th><th>出発</th><th>到着</th><th class="num">OUT</th><th class="num">IN</th><th>内容</th><th class="num">飛行</th><th class="num">PIC</th><th class="num">CO</th><th>編成</th><th></th><th></th></tr></thead><tbody>';
-  l.forEach(function (f, i) {
-    h += '<tr class="' + roleOf(f) + '"><td>' + (i + 1) + '</td><td>' + esc(f.date) + '</td><td>' + esc(f.aircraft_type) + '</td><td>' + esc(f.registration) + '</td><td>' + esc(f.dep) + '</td><td>' + esc(f.arr) + '</td>' +
-      '<td class="num">' + esc(f.dep_time) + '</td><td class="num">' + esc(f.arr_time) + '</td><td>' + esc(f.flight_no) + '</td><td class="num">' + hm(f.block, true) + '</td><td class="num">' + hm(f.pic, true) + '</td><td class="num">' + hm((f.sic || 0) + (f.solo_sic || 0), true) + '</td>' +
-      '<td>' + (f.crew ? '<span class="tag">' + esc(f.crew) + '</span>' : '') + (f.qpr === '1' ? ' <span class="tag qpr">QPR</span>' : '') + '</td><td>' + (f.id ? '<span class="tag">既存レグの更新</span>' : '新規') + '</td>' +
-      '<td><button class="btn small" data-i="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-i="' + i + '" data-act="del">削除</button></td></tr>';
-  });
-  $('#pendingTable').innerHTML = h + '</tbody>';
-  $('#pendingTable').onclick = function (ev) {
-    var b = ev.target.closest('button'); if (!b) return;
-    var i = Number(b.dataset.i);
-    if (b.dataset.act === 'edit') editPending(i);
-    else { var l2 = loadPending(); l2.splice(i, 1); savePending(l2); if (S.pendingIdx === i) resetForm(); if (S.boot) renderHeader(S.boot.cumulative); }
-  };
+  var l = loadPending();
+  if (S.boot) renderTable($('#recentTable'), S.boot.recent, { compact: true, pending: l });
+  $('#btnSaveAll').style.display = l.length ? '' : 'none';
+  $('#btnClearPending').style.display = l.length ? '' : 'none';
+  $('#btnSaveAll').textContent = '保存 (' + l.length + ' 件)';
 }
 function editPending(i) {
   var f = loadPending()[i]; if (!f) return;
@@ -380,19 +366,20 @@ function clearPending() {
 /** まとめて保存: one apiSaveFlights request for the whole queue (atomic on the server). */
 function saveAllPending() {
   var l = loadPending(); if (!l.length) { toast('未保存のレグはありません'); return; }
+  var lbl0 = $('#btnSaveAll').textContent;
   var btn = $('#btnSaveAll'); btn.disabled = true; $('#btnClearPending').disabled = true;
-  $('#pendingStatus').textContent = l.length + ' 件を保存中…';
+  $('#pendingStatus').textContent = l.length + ' 件を保存中…'; btn.textContent = '保存中…';
   var t0 = Date.now();
   call('apiSaveFlights', l).then(function (res) {
     savePending([]);
-    toast('まとめて保存しました: 追加 ' + res.added + ' / 更新 ' + res.updated + (res.refreshed && res.refreshed.length ? ' / ' + res.refreshed.join(', ') + ' 更新' : '') + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' 秒)');
+    toast('保存しました: 追加 ' + res.added + ' / 更新 ' + res.updated + (res.refreshed && res.refreshed.length ? ' / ' + res.refreshed.join(', ') + ' 更新' : '') + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' 秒)');
     $('#pendingStatus').textContent = '';
     if (S.pendingIdx !== null) resetForm();
     return reboot().then(function () { if (S.listMonth) loadMonth(S.listMonth); });
   }).catch(function (e) {
     toast(e.message, true);
     $('#pendingStatus').textContent = '保存できませんでした（キューは残っています）: ' + e.message;
-  }).then(function () { btn.disabled = false; $('#btnClearPending').disabled = false; });
+  }).then(function () { btn.disabled = false; btn.textContent = lbl0; $('#btnClearPending').disabled = false; });
 }
 
 function copyReturn() {
@@ -448,15 +435,22 @@ function renderTable(table, flights, opts) {
   opts = opts || {};
   var cols = opts.compact ? LIST_COLS.slice(0, 12).concat(['sic', 'ifr', 'qpr']) : LIST_COLS;
   var h = '<thead><tr>' + cols.map(function (k) { return '<th class="' + (COLS[k].kind === 'min' || COLS[k].kind === 'int' ? 'num' : '') + '">' + esc(shortLabel(k)) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>';
-  flights.forEach(function (f, i) {
-    h += '<tr class="' + roleOf(f) + '">' + cols.map(function (k) {
+  var pending = opts.pending || [];
+  var rowCells = function (f) {
+    return cols.map(function (k) {
       var c = COLS[k], v = f[k];
       if (c.kind === 'min') return '<td class="num">' + hm(v, true) + '</td>';
       if (c.kind === 'int') return '<td class="num">' + (v || '') + '</td>';
       if (k === 'crew') return '<td>' + (v ? '<span class="tag">' + esc(v) + '</span>' : '') + '</td>';
       if (k === 'qpr') return '<td>' + (v === '1' ? '<span class="tag qpr">QPR</span>' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
-    }).join('') + '<td><button class="btn small" data-i="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-i="' + i + '" data-act="del">削除</button></td></tr>';
+    }).join('');
+  };
+  pending.forEach(function (f, i) {
+    h += '<tr class="pending">' + rowCells(f) + '<td><span class="tag">未保存' + (f.id ? '・更新' : '') + '</span> <button class="btn small" data-p="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-p="' + i + '" data-act="del">削除</button></td></tr>';
+  });
+  flights.forEach(function (f, i) {
+    h += '<tr class="' + roleOf(f) + '">' + rowCells(f) + '<td><button class="btn small" data-i="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-i="' + i + '" data-act="del">削除</button></td></tr>';
   });
   h += '</tbody>';
   if (opts.totals) {
@@ -472,6 +466,12 @@ function renderTable(table, flights, opts) {
   table.innerHTML = h;
   table.onclick = function (ev) {
     var b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.p !== undefined) {
+      var pi = Number(b.dataset.p);
+      if (b.dataset.act === 'edit') editPending(pi);
+      else { var l2 = loadPending(); l2.splice(pi, 1); savePending(l2); if (S.pendingIdx === pi) resetForm(); if (S.boot) renderHeader(S.boot.cumulative); }
+      return;
+    }
     var f = flights[Number(b.dataset.i)];
     if (b.dataset.act === 'edit') editFlight(f); else deleteFlight(f);
   };
