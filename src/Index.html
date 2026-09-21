@@ -113,6 +113,7 @@
 
 <!-- ================= 設定 ================= -->
 <section class="tab" id="tab-settings">
+  <p class="hint" style="margin:0 0 10px">この画面の設定（基本設定・資格要件チェックリスト・繰越合計）は、下の「設定をすべて保存」でまとめて保存されます。</p>
   <div class="card">
     <h2>基本設定</h2>
     <div class="grid">
@@ -131,7 +132,11 @@
     <h2>繰越合計 (システム導入前の累計)</h2>
     <p class="hint">Numbers 版から移行する場合は data/carry_forward.json の値。時間は H:MM または分で入力。</p>
     <div class="grid narrow" id="carryGrid"></div>
-    <div class="row" style="margin-top:10px"><button class="btn primary" id="btnSaveSettings">設定を保存</button><span class="hint" id="settingsStatus"></span></div>
+  </div>
+  <div class="savebar">
+    <button class="btn primary" id="btnSaveSettings">設定をすべて保存</button>
+    <span class="hint">基本設定・資格要件チェックリスト・繰越合計の 3 つをまとめて保存し、年次シートとチェックリストを更新します</span>
+    <span class="hint" id="settingsStatus"></span>
   </div>
   <div class="card">
     <h2>JCAB 飛行日誌シート</h2>

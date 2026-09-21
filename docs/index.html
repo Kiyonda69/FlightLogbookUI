@@ -62,6 +62,7 @@
   .kpi div { background: #f8f9fa; border-radius: 6px; padding: 8px 10px; }
   .kpi label { margin: 0; }
   .kpi b { font-size: 18px; font-family: "SF Mono", Consolas, monospace; }
+  .savebar { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #fffdf5; border: 1px solid #f0d78c; border-radius: 8px; padding: 10px 16px; margin-bottom: 14px; box-shadow: 0 -2px 8px rgba(0,0,0,.06); }
   .tag { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #e8eaed; color: #3c4043; font-family: "SF Mono", Consolas, monospace; }
   .q { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
   .q div.item { border-radius: 6px; padding: 8px 10px; border-left: 4px solid #9aa0a6; background: #f8f9fa; }
@@ -202,6 +203,7 @@
 
 <!-- ================= 設定 ================= -->
 <section class="tab" id="tab-settings">
+  <p class="hint" style="margin:0 0 10px">この画面の設定（基本設定・資格要件チェックリスト・繰越合計）は、下の「設定をすべて保存」でまとめて保存されます。</p>
   <div class="card">
     <h2>基本設定</h2>
     <div class="grid">
@@ -220,7 +222,11 @@
     <h2>繰越合計 (システム導入前の累計)</h2>
     <p class="hint">Numbers 版から移行する場合は data/carry_forward.json の値。時間は H:MM または分で入力。</p>
     <div class="grid narrow" id="carryGrid"></div>
-    <div class="row" style="margin-top:10px"><button class="btn primary" id="btnSaveSettings">設定を保存</button><span class="hint" id="settingsStatus"></span></div>
+  </div>
+  <div class="savebar">
+    <button class="btn primary" id="btnSaveSettings">設定をすべて保存</button>
+    <span class="hint">基本設定・資格要件チェックリスト・繰越合計の 3 つをまとめて保存し、年次シートとチェックリストを更新します</span>
+    <span class="hint" id="settingsStatus"></span>
   </div>
   <div class="card">
     <h2>JCAB 飛行日誌シート</h2>
