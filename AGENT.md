@@ -99,6 +99,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 
 - **時間はすべて整数「分」で保存**する。`H:MM` への整形は UI と帳票だけ。Numbers 版で「60倍」換算表を手作りしていた苦労を繰り返さない。
 - **Flights シートに数式を書かない**。集計はすべて `Totals.gs` がスクリプトで計算する（Numbers 版は月ごとに `SUM` と前月参照 `11月::I62` の手貼り数式で、表の追加ごとに壊れていた）。
+- `Settings` の値も同じ問題がある: `put()` は値セルに `@` を付けてから書き、`readSettings_` は Date になってしまった値を `settingText_` で `yyyy-mm-dd`（スクリプトのタイムゾーン）に戻す。Date を JSON にすると `2027-04-06T15:00:00Z` と 1 日ずれるので、Date を生で返してはいけない（実際に起きた不具合）。
 - `date` / `dep_time` / `arr_time` / `remarks` などテキスト列は文字列として保存。**Flights シートへの書き込みは必ず `writeFlightRows_`** を通す（対象行の B..I と AC..AF に `@` を付けてから `setValues`）。`appendRow` は使わない（書式を付けられず、自由欄 `1:30` が時刻に化ける事故が実際に起きた）。読み取り側 `cellText_` は Date / 日割り小数を `H:MM` に戻す防御を持つ。壊れたシートは `repairFlightsSheetFormats()`（メニュー）で全行書き直し。
 - 飛行時間は `arr - dep`、日付跨ぎは +24h（Numbers 版の `G+(F>G)-F` と同じ）。
 - 役割時間 (pic, sic, …) は `block` を超えてはならない（`normalizeFlight_` が拒否）。

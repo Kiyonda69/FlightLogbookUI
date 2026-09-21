@@ -297,6 +297,17 @@ check('qual sheet: PE 有効期限 + 実施日 cell', qs.rows[4][8], '有効期�
 check('qual sheet: PE 基準月 = expiry month', qs.rows[2][8], '12月');
 check('apiQualification uses the latest date of a list', ctx.apiQualification('2026-09-21').expiries.filter(function (e) { return e.key === 'exp_english'; })[0].date, '2030-01-01');
 check('forced rebuild restyles', ctx.apiRebuildQualSheet().relayout, true);
+// Settings dates must survive Sheets' date auto-conversion (the real-sheet bug: "2027-04-06T15:00:00Z")
+ctx.apiSaveSettings({ exp_passport: '2029-01-31', exp_visa: '2035-07-09' });
+var setSheet = ctx.__mockSpreadsheet.getSheetByName('Settings');
+var ppRow = setSheet.rows.filter(function (r) { return r[0] === 'exp_passport'; })[0];
+check('settings: date saved as text (format @ before write)', typeof ppRow[1], 'string');
+ppRow[1] = new Date(2029, 0, 31); // simulate a cell converted by Sheets before the fix
+ctx.settingsCache_ = null;
+check('settings: Date cell read back as yyyy-mm-dd (no UTC day shift)', ctx.getSettings_().exp_passport, '2029-01-31');
+check('qual sheet: passport slot from a Date cell', ctx.apiQualificationSheetData().passport, ['2029-01-31']);
+check('apiQualification: passport status from a Date cell', ctx.apiQualification('2026-09-21').expiries.filter(function (e) { return e.key === 'exp_passport'; })[0].date, '2029-01-31');
+ctx.apiSaveSettings({ exp_passport: '', exp_visa: '' });
 ctx.apiSaveSettings({ department: '', employee_no: '', exp_english: '', dates_route: '', exp_pe: '', dates_pe: '' });
 check('dateList_ tolerates junk', ctx.dateList_('2026-01-05, abc, 2025/3/1'), ['2025-03-01', '2026-01-05']);
 

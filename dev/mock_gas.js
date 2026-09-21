@@ -24,6 +24,8 @@
     if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
     var m = v.match(/^(\d{1,2}):(\d{2})$/);
     if (m) return (Number(m[1]) * 60 + Number(m[2])) / 1440;
+    var d = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);          // "2027-04-07" → Date (local midnight), as Sheets does
+    if (d) return new Date(Number(d[1]), Number(d[2]) - 1, Number(d[3]));
     return v;
   }
   Range.prototype.setValues = function (vals) {

@@ -158,9 +158,21 @@ function readSettings_() {
     var k = String(r[0]).trim();
     if (!k) return;
     if (k.indexOf('carry_forward_') === 0) out.carry_forward[k.substring(14)] = Number(r[1]) || 0;
-    else out[k] = r[1];
+    else out[k] = settingText_(r[1]);
   });
   return out;
+}
+
+/**
+ * Settings values are text. If Sheets auto-converted a typed date ("2027-04-07") into a Date, turn
+ * it back into "yyyy-mm-dd" in the script time zone (a Date serialised to JSON would otherwise
+ * become "2027-04-06T15:00:00.000Z" — one day off).
+ */
+function settingText_(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return parseDateStr_(v);
+  if (typeof v === 'number') return String(v);
+  return String(v);
 }
 
 /** Save settings from UI: { pilot_name, licence_no, ..., carry_forward: {key: minutes|count} } */
@@ -171,8 +183,12 @@ function apiSaveSettings(obj) {
   var index = {};
   rows.forEach(function (r, i) { index[String(r[0]).trim()] = i + 2; });
   function put(key, value, desc) {
-    if (index[key]) sh.getRange(index[key], 2).setValue(value);
-    else { sh.appendRow([key, value, desc || '']); index[key] = sh.getLastRow(); }
+    // Text format FIRST so Sheets never turns "2027-04-07" or "1:30" into a date/time.
+    var isNum = typeof value === 'number';
+    if (!index[key]) { sh.appendRow([key, '', desc || '']); index[key] = sh.getLastRow(); }
+    var cell = sh.getRange(index[key], 2);
+    if (!isNum) cell.setNumberFormat('@');
+    cell.setValue(value);
   }
   Object.keys(SETTINGS_DEFAULTS).forEach(function (k) {
     if (obj[k] !== undefined) put(k, obj[k]);
