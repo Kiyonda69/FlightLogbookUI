@@ -12,7 +12,7 @@ var ctx = vm.createContext({ console: console, Math: Math, Date: Date, JSON: JSO
 function load(file) { vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), ctx, { filename: file }); }
 load('dev/mock_gas.js');
 ctx.__srcFiles = { CrewRules: fs.readFileSync(path.join(root, 'src/CrewRules.html'), 'utf8') };
-['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Qual.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
+['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Qual.gs', 'Validate.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
 
 var failures = 0;
 function check(name, actual, expected) {
@@ -310,6 +310,47 @@ check('header complete again', fl.rows[0][fl.rows[0].length - 1], 'qpr');
 fl.rows[0] = fl.rows[0].slice(0, fl.rows[0].length - 1);
 ctx.apiBootstrap();
 check('readAllFlights_ self-heals a missing trailing header', fl.rows[0][fl.rows[0].length - 1], 'qpr');
+
+// --- onEdit: direct edits of the Flights sheet are marked (red + note), never rewritten
+var vsh = ctx.__mockSpreadsheet.getSheetByName('Flights');
+var vRow = vsh.getLastRow();                                   // last data row
+var vr = ctx.readAllFlights_().filter(function (f) { return f._row === vRow; })[0];
+var origRemark = vsh.rows[vRow - 1][ctx.colIndex_('remarks')];
+var edit = function (r, c, v) { vsh.rows[r - 1][c - 1] = v; ctx.onEdit({ range: vsh.getRange(r, c, 1, 1) }); return [vsh.backgrounds[r + ',' + c] || null, vsh.notes[r + ',' + c] || '']; };
+var cRem = ctx.colIndex_('remarks') + 1, cBlock = ctx.colIndex_('block') + 1, cDate = ctx.colIndex_('date') + 1, cDep = ctx.colIndex_('dep') + 1, cCrew = ctx.colIndex_('crew') + 1, cTime = ctx.colIndex_('dep_time') + 1;
+check('onEdit: remark converted to a day fraction → marked', edit(vRow, cRem, 0.0625)[0], ctx.FLIGHT_BAD_BG);
+check('onEdit: remark as Date → marked with note', /テキスト形式/.test(edit(vRow, cRem, new Date(1899, 11, 30, 1, 30))[1]), true);
+check('onEdit: valid remark clears the mark', edit(vRow, cRem, origRemark), [null, '']);
+check('onEdit: block "1:30" (should be minutes) → note suggests 90', /→ 90/.test(edit(vRow, cBlock, '1:30')[1]), true);
+check('onEdit: block 90 ok', edit(vRow, cBlock, 90), [null, '']);
+check('onEdit: block as day fraction → marked', /時刻/.test(edit(vRow, cBlock, 0.0625)[1]), true);
+vsh.rows[vRow - 1][cBlock - 1] = vr.block; ctx.onEdit({ range: vsh.getRange(vRow, cBlock, 1, 1) });
+check('onEdit: date as Date object → marked', /YYYY-MM-DD/.test(edit(vRow, cDate, new Date(2025, 0, 5))[1]), true);
+check('onEdit: date "2025/1/5" → marked', /YYYY-MM-DD/.test(edit(vRow, cDate, '2025/1/5')[1]), true);
+check('onEdit: date restored ok', edit(vRow, cDate, vr.date), [null, '']);
+check('onEdit: dep "hnd" → ICAO note', /ICAO/.test(edit(vRow, cDep, 'hnd')[1]), true);
+check('onEdit: dep restored', edit(vRow, cDep, vr.dep), [null, '']);
+check('onEdit: crew "X9" → marked', /編成コード/.test(edit(vRow, cCrew, 'X9')[1]), true);
+check('onEdit: crew restored', edit(vRow, cCrew, vr.crew), [null, '']);
+check('onEdit: dep_time "25:00" → marked', /時刻の値/.test(edit(vRow, cTime, '25:00')[1]), true);
+check('onEdit: dep_time restored', edit(vRow, cTime, vr.dep_time), [null, '']);
+// multi-cell edit spanning the header row and columns beyond the schema (row 2 = first leg)
+var row2Block = vsh.rows[1][cBlock - 1];
+vsh.rows[1][cBlock - 1] = '1:30';
+ctx.onEdit({ range: vsh.getRange(1, 1, 3, ctx.FLIGHT_COLUMNS.length + 3) });
+check('onEdit: block edit skips the header and marks the bad cell', [vsh.backgrounds['1,' + cBlock] || null, vsh.backgrounds['2,' + cBlock], vsh.backgrounds['3,' + cBlock] || null], [null, ctx.FLIGHT_BAD_BG, null]);
+vsh.rows[1][cBlock - 1] = row2Block; ctx.onEdit({ range: vsh.getRange(2, cBlock, 1, 1) });
+check('onEdit: restored row 2 is clean', vsh.backgrounds['2,' + cBlock] || null, null);
+// a paste of 1000 rows is capped at FLIGHT_EDIT_MAX_ROWS (must not time out)
+check('onEdit: huge range does not throw', (function () { try { ctx.onEdit({ range: vsh.getRange(2, 1, 1000, 5) }); return true; } catch (e) { return e.message; } })(), true);
+check('onEdit: other sheets are ignored', (function () { var s = ctx.__mockSpreadsheet.getSheetByName('Settings'); ctx.onEdit({ range: s.getRange(2, 2, 1, 1) }); return Object.keys(s.backgrounds).length; })(), 0);
+check('onEdit: never throws on a bad event', (function () { try { ctx.onEdit(null); ctx.onEdit({}); return true; } catch (e) { return e.message; } })(), true);
+var savedLen = vsh.rows.length; while (vsh.rows.length < vRow + 5) vsh.rows.push([]);
+check('onEdit: empty row below the data is ignored', edit(vRow + 5, cBlock, ''), [null, '']);
+check('onEdit: a lone value in an empty row is still checked', /分の整数/.test(edit(vRow + 5, cBlock, '1:30')[1]), true);
+vsh.rows.length = savedLen;
+check('validateFlightsSheet: whole sheet clean', /問題のあるセル 0 件/.test(ctx.validateFlightsSheet()), true);
+check('data untouched by validation', ctx.apiBootstrap().cumulative, expected);
 
 // --- 資格要件 (qualification) from the logbook, evaluated at a fixed "today"
 var q = ctx.apiQualification('2024-11-15');

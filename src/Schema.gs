@@ -235,6 +235,7 @@ function onOpen() {
     .addItem('年次帳票をすべて再生成', 'rebuildAllYearReports')
     .addItem('資格要件チェックリストを再生成', 'apiRebuildQualSheet')
     .addItem('Flights シートの書式を修復', 'repairFlightsSheetFormats')
+    .addItem('Flights シートを検査 (直接編集のチェック)', 'validateFlightsSheet')
     .addItem('マスター再構築 (Flights から)', 'rebuildMastersFromFlights')
     .addToUi();
 }

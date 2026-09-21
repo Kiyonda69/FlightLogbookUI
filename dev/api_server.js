@@ -17,7 +17,7 @@ var ctx = vm.createContext({ console: console, Math: Math, Date: Date, JSON: JSO
 function load(f) { vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }); }
 load('dev/mock_gas.js');
 ctx.__srcFiles = { CrewRules: fs.readFileSync(path.join(root, 'src/CrewRules.html'), 'utf8') };
-['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Qual.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
+['Schema.gs', 'Util.gs', 'Api.gs', 'Totals.gs', 'Report.gs', 'Import.gs', 'Crew.gs', 'Qual.gs', 'Validate.gs', 'Code.gs'].forEach(function (f) { load('src/' + f); });
 
 ctx.setupSpreadsheet();
 ctx.PropertiesService.getScriptProperties().setProperty('API_PASSWORD', 'dev-pass');

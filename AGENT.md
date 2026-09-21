@@ -168,6 +168,13 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 更新タイミング: `refreshYearSheets_` の末尾（レグの追加・更新・削除・取込）と `apiSaveSettings`（すべての設定変更）。レイアウト済みなら値の `setValues` 1 回のみ（L1 に「更新 日付」）。メニュー「資格要件チェックリストを再生成」= `apiRebuildQualSheet()`（強制再構築）。
 - 印刷設定（横・1 ページ収まり）は API で設定できないので手動。
 
+### Flights シート直接編集の検査（`src/Validate.gs`）
+
+- 単純トリガー `onEdit(e)`: 編集範囲が `Flights` のときだけ、列の `kind` に応じて値を検査し、問題のあるセルを赤（`FLIGHT_BAD_BG`）+ メモにする。正しい値に直すと消える。**値は書き換えない**、年次シート・チェックリストも触らない（次に UI から保存したときに反映）。
+- 検出内容: Date / 日割り小数に化けた日付・時刻・テキスト、`YYYY-MM-DD` / `HH:MM` 以外の書式、分の列に `1:30` や小数、ICAO 4 文字以外、編成コード、`qpr` の値、型式・登録記号の小文字。
+- 単純トリガーの制約: 認可が要るサービス（Properties / Utilities / Lock）は使わない、1 回 200 行まで。全件検査はメニュー「Flights シートを検査」（`validateFlightsSheet`）。
+- `dev/mock_gas.js` は `setBackgrounds` / `setNotes` をセルごとに記録し、`tools/test_logic.js` が `onEdit({ range })` を直接呼んで検証する。
+
 ### UI の表記規則
 
 - 画面上では副操縦士を **CO** と表記する（`SIC` は使わない）。列ラベルはサーバーの `FLIGHT_COLUMNS.label`（JCAB 正式名、`SOLO or SIC` を含む）を `lbl(k)` で `SIC → CO` に置換して表示する。帳票シートのヘッダー（`REPORT_HEADER_*`）は JCAB 様式どおり `SIC` のまま。
@@ -225,6 +232,7 @@ python tools/build_pages.py
 - `data/` や `*.numbers`、API パスワードをコミットする（`.gitignore` 済み。リポジトリは公開の可能性がある）。
 - `Script.html` に `google.script.run` 以外のサーバー呼び出し手段を持ち込む（両 UI の互換が崩れる）。
 - `Flights` シートの列順・見出しを Schema.gs と別に手で変える。
+- `onEdit`（Validate.gs）で値を書き換える・年次シートを再生成する。検出と赤表示だけに留める（単純トリガーは 30 秒制限と権限制限がある）。
 - 年次シート `飛行日誌_YYYY` を手編集して正とする（次の保存で上書きされる）。
 - 時間を小数時間（7.5h）で保存する。分単位のみ。
 - `Settings` の `carry_forward_*` を無断で変える（累計がすべてずれる）。
@@ -237,4 +245,4 @@ python tools/build_pages.py
 - 90 日 3 回離着陸などのカレンシー警告をヘッダーに表示（`apiRecency` は実装済み、閾値判定は未実装）。
 - ICAO 空港マスターに IATA / 空港名を投入（`Airports` シートの `iata`, `name` は空）。
 - 同乗教育 / 操縦教員時間の入力プリセット。
-- Google Sheets 側からの入力（`onEdit` によるバリデーション）— 現状は UI 経由のみ想定。
+- Google Sheets 側からの本格的な入力支援（`onEdit` は検出と赤表示のみ実装済み。自動修復や年次シートの追従は未実装）。

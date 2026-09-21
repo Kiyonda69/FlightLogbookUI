@@ -37,6 +37,20 @@
     return this;
   };
   Range.prototype.getValue = function () { return this.getValues()[0][0]; };
+  Range.prototype.getSheet = function () { return this.s; };
+  Range.prototype.getRow = function () { return this.r; };
+  Range.prototype.getColumn = function () { return this.c; };
+  Range.prototype.getNumRows = function () { return this.nr; };
+  Range.prototype.getNumColumns = function () { return this.nc; };
+  // Backgrounds / notes are stored per cell so tests can assert onEdit marks (null bg = default).
+  Range.prototype.setBackgrounds = function (bgs) {
+    for (var i = 0; i < this.nr; i++) for (var j = 0; j < this.nc; j++) this.s.backgrounds[(this.r + i) + ',' + (this.c + j)] = bgs[i][j];
+    return this;
+  };
+  Range.prototype.setNotes = function (notes) {
+    for (var i = 0; i < this.nr; i++) for (var j = 0; j < this.nc; j++) this.s.notes[(this.r + i) + ',' + (this.c + j)] = notes[i][j];
+    return this;
+  };
   Range.prototype.setValue = function (v) { return this.setValues([[v]]); };
   Range.prototype.setNumberFormat = function (fmt) {
     for (var i = 0; i < this.nr; i++) for (var j = 0; j < this.nc; j++) this.s.formats[(this.r + i) + ',' + (this.c + j)] = fmt;
@@ -66,7 +80,7 @@
   RangeList.prototype.getRanges = function () { return this.ranges; };
 
   var sheetIdSeq = 100;
-  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.merges = []; this.borderCalls = []; this.rowHeights = {}; this.colWidths = {}; this.maxRows = 1000; this.maxCols = 26; this.id = sheetIdSeq++; }
+  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.merges = []; this.borderCalls = []; this.rowHeights = {}; this.colWidths = {}; this.backgrounds = {}; this.notes = {}; this.maxRows = 1000; this.maxCols = 26; this.id = sheetIdSeq++; }
   Sheet.prototype.getRangeList = function (a1s) { var s = this; return new RangeList(a1s.map(function (a) { return a1ToRange(s, a); })); };
   Sheet.prototype.insertRowsAfter = function (after, n) { this.maxRows += n; return this; };
   Sheet.prototype.getMaxColumns = function () { return this.maxCols; };
