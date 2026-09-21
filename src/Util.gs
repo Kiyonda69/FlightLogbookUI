@@ -56,6 +56,17 @@ function blockMinutes_(depTime, arrTime) {
 
 function nowIso_() { return new Date().toISOString(); }
 
+/**
+ * Text cell -> string. Defensive: if Sheets has auto-converted a text like "1:30" into a
+ * time (Date) or a day fraction (0.0625), turn it back into "H:MM".
+ */
+function cellText_(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return pad2_(v.getHours()) + ':' + pad2_(v.getMinutes());
+  if (typeof v === 'number' && v > 0 && v < 1) return fmtMinutes_(Math.round(v * 1440));
+  return String(v);
+}
+
 /** Convert a sheet row (array) to a flight object with normalized types. */
 function rowToFlight_(row) {
   var o = {};
@@ -66,7 +77,7 @@ function rowToFlight_(row) {
       case 'time': o[c.key] = v ? parseClock_(v) : ''; break;
       case 'int':  o[c.key] = Number(v) || 0; break;
       case 'min':  o[c.key] = parseMinutes_(v); break;
-      default:     o[c.key] = v === null || v === undefined ? '' : String(v);
+      default:     o[c.key] = cellText_(v);
     }
   });
   return o;

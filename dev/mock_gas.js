@@ -41,7 +41,9 @@
     return this;
   };
   ['setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment',
-    'setWrap', 'setBorder', 'breakApart'].forEach(function (m) { Range.prototype[m] = function () { return this; }; });
+    'setWrap', 'setFontFamily', 'setFontSize', 'setFontColor'].forEach(function (m) { Range.prototype[m] = function () { return this; }; });
+  // Borders are counted per call so tests can assert the design was applied.
+  Range.prototype.setBorder = function () { this.s.borderCalls.push([this.r, this.c, this.nr, this.nc].concat(Array.prototype.slice.call(arguments))); return this; };
   // Merges are recorded so tests can check that header merges are (re)built.
   Range.prototype.merge = function () { this.s.merges.push([this.r, this.c, this.nr, this.nc]); return this; };
   Range.prototype.mergeVertically = function () { for (var j = 0; j < this.nc; j++) this.s.merges.push([this.r, this.c + j, this.nr, 1]); return this; };
@@ -56,14 +58,19 @@
     return new Range(sheet, r1, c1, r2 - r1 + 1, c2 - c1 + 1);
   }
   function RangeList(ranges) { this.ranges = ranges; }
-  ['setNumberFormat', 'setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment', 'setWrap', 'setBorder']
+  ['setNumberFormat', 'setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment', 'setWrap', 'setBorder',
+    'setFontFamily', 'setFontSize', 'setFontColor']
     .forEach(function (m) { RangeList.prototype[m] = function () { var a = arguments; this.ranges.forEach(function (r) { r[m].apply(r, a); }); return this; }; });
   RangeList.prototype.getRanges = function () { return this.ranges; };
 
   var sheetIdSeq = 100;
-  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.merges = []; this.maxRows = 1000; this.id = sheetIdSeq++; }
+  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.merges = []; this.borderCalls = []; this.rowHeights = {}; this.colWidths = {}; this.maxRows = 1000; this.maxCols = 26; this.id = sheetIdSeq++; }
   Sheet.prototype.getRangeList = function (a1s) { var s = this; return new RangeList(a1s.map(function (a) { return a1ToRange(s, a); })); };
   Sheet.prototype.insertRowsAfter = function (after, n) { this.maxRows += n; return this; };
+  Sheet.prototype.getMaxColumns = function () { return this.maxCols; };
+  Sheet.prototype.insertColumnsAfter = function (after, n) { this.maxCols += n; return this; };
+  Sheet.prototype.setRowHeights = function (r, n, h) { for (var i = 0; i < n; i++) this.rowHeights[r + i] = h; return this; };
+  Sheet.prototype.setRowHeight = function (r, h) { this.rowHeights[r] = h; return this; };
   Sheet.prototype.getName = function () { return this.name; };
   Sheet.prototype.getSheetId = function () { return this.id; };
   Sheet.prototype.getLastRow = function () {
@@ -74,8 +81,10 @@
   Sheet.prototype.appendRow = function (r) { this.rows.push(r.slice()); return this; };
   Sheet.prototype.getRange = function (r, c, nr, nc) { return new Range(this, r, c, nr || 1, nc || 1); };
   Sheet.prototype.deleteRow = function (r) { this.rows.splice(r - 1, 1); return this; };
-  Sheet.prototype.clear = function () { this.rows = []; this.formats = {}; return this; }; // merges survive clear(), as in Sheets
-  ['setFrozenRows', 'hideColumns', 'setColumnWidths', 'setColumnWidth'].forEach(function (m) { Sheet.prototype[m] = function () { return this; }; });
+  Sheet.prototype.clear = function () { this.rows = []; this.formats = {}; this.borderCalls = []; return this; }; // merges survive clear(), as in Sheets
+  ['setFrozenRows', 'hideColumns'].forEach(function (m) { Sheet.prototype[m] = function () { return this; }; });
+  Sheet.prototype.setColumnWidth = function (c, w) { this.colWidths[c] = w; return this; };
+  Sheet.prototype.setColumnWidths = function (c, n, w) { for (var i = 0; i < n; i++) this.colWidths[c + i] = w; return this; };
 
   function Spreadsheet() { this.sheets = []; }
   Spreadsheet.prototype.getSheetByName = function (n) { return this.sheets.filter(function (s) { return s.name === n; })[0] || null; };
@@ -90,6 +99,7 @@
   g.SpreadsheetApp = {
     getActiveSpreadsheet: function () { return active; },
     flush: function () {},
+    BorderStyle: { SOLID: 'SOLID', SOLID_MEDIUM: 'SOLID_MEDIUM', SOLID_THICK: 'SOLID_THICK', DOTTED: 'DOTTED', DASHED: 'DASHED', DOUBLE: 'DOUBLE' },
     getUi: function () {
       var m = { addItem: function () { return m; }, addToUi: function () {} };
       return {

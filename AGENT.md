@@ -93,7 +93,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 
 - **時間はすべて整数「分」で保存**する。`H:MM` への整形は UI と帳票だけ。Numbers 版で「60倍」換算表を手作りしていた苦労を繰り返さない。
 - **Flights シートに数式を書かない**。集計はすべて `Totals.gs` がスクリプトで計算する（Numbers 版は月ごとに `SUM` と前月参照 `11月::I62` の手貼り数式で、表の追加ごとに壊れていた）。
-- `date` / `dep_time` / `arr_time` は文字列として保存（列書式 `@`）。Sheets に日付/時刻として再解釈させない。
+- `date` / `dep_time` / `arr_time` / `remarks` などテキスト列は文字列として保存。**Flights シートへの書き込みは必ず `writeFlightRows_`** を通す（対象行の B..I と AC..AF に `@` を付けてから `setValues`）。`appendRow` は使わない（書式を付けられず、自由欄 `1:30` が時刻に化ける事故が実際に起きた）。読み取り側 `cellText_` は Date / 日割り小数を `H:MM` に戻す防御を持つ。壊れたシートは `repairFlightsSheetFormats()`（メニュー）で全行書き直し。
 - 飛行時間は `arr - dep`、日付跨ぎは +24h（Numbers 版の `G+(F>G)-F` と同じ）。
 - 役割時間 (pic, sic, …) は `block` を超えてはならない（`normalizeFlight_` が拒否）。
 - SIM/FTD セッションは `block = 0`, `takeoffs = landings = 0`, 登録記号は空でもよい（旧データに 11 行ある）。
@@ -102,7 +102,8 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
   - 合計 = 前項までの合計 + 項小計
 - **年次シート `飛行日誌_YYYY` は手動生成しない**。`apiAddFlight` / `apiUpdateFlight` / `apiDeleteFlight` / `apiImportCsv` / `apiSaveSettings` が `refreshYearSheets_(fromYear)` を呼び、対象年とそれ以降の年（前項までの合計が変わる）を再生成する。年の初レグでシートが新規作成される。UI に帳票タブは無い（設定タブにシート一覧の表示のみ）。書き込み API は `{ flight, refreshed: [sheetName...] }` を返す。
-- 再生成コストを抑える設計: 年全体を 1 回の `setValues`、書式は `RangeList`、ヘッダー結合はレイアウト（各月ブロックの開始行、Script Properties `report_layout_<sheet>`）が変わったときだけ `breakApart` して作り直す。1 年分で十数回の Sheets 呼び出し。
+- 再生成コストを抑える設計: 年全体を 1 回の `setValues`、書式・罫線は `RangeList` で 12 ブロックまとめて適用（年あたり呼び出し回数は固定）。結合セル・列幅・行高はレイアウト（各月ブロックの開始行と行数）または `REPORT_DESIGN_VERSION` が前回（Script Properties `report_layout_<sheet>`）と違うときだけ作り直す。
+- 帳票デザインは Numbers 原本のスクリーンショットに合わせてある（`Report.gs` 冒頭コメント参照）: 細い格子 + 中太の外枠、ヘッダー下と合計行上の中太線、グループ境界（I, K, L, Q, U, W, Z, AB 列の左）の中太縦線、離陸|着陸 間の点線、1 行おきの薄い縞（合計行まで連続）、合計 3 行の左側 A..G を 1 セルに結合、ヘッダー「月日／＿＿年」「航空機／の型式」「自由欄／INST」、全セル中央揃え・通常ウェイト・Noto Sans JP 10pt、列幅は `REPORT_COL_WIDTHS`。Numbers の数式由来の `0:00` 埋めは再現しない。見た目を変えたら `REPORT_DESIGN_VERSION` を上げる。
 - 重複判定キー（CSV 取込）: `date | dep_time | flight_no | registration`。
 - 帳票に文字列らしき値（月日 `"5.30"`、時刻 `"23:40"`）を書くときは **`setNumberFormat('@')` を `setValues` より先に**呼ぶ。後から書式を付けても Sheets は書き込み時点で `5.3` に変換してしまう（実際に起きた不具合）。`dev/mock_gas.js` はこの自動変換を模擬するので、テストで検出できる。
 

@@ -38,7 +38,7 @@ function apiImportCsv(csvText, opts) {
         if (opts.replace) {
           var ex = seen[key];
           f.id = ex.id; f.created_at = ex.created_at; f.updated_at = now;
-          ss_().getSheetByName(SHEET_FLIGHTS).getRange(ex._row, 1, 1, FLIGHT_COLUMNS.length).setValues([flightToRow_(f)]);
+          writeFlightRows_(ss_().getSheetByName(SHEET_FLIGHTS), ex._row, [flightToRow_(f)]);
           updated++;
         } else skipped++;
         continue;
@@ -52,11 +52,33 @@ function apiImportCsv(csvText, opts) {
   }
   if (toAppend.length) {
     var sh = ss_().getSheetByName(SHEET_FLIGHTS);
-    sh.getRange(sh.getLastRow() + 1, 1, toAppend.length, FLIGHT_COLUMNS.length).setValues(toAppend);
+    writeFlightRows_(sh, sh.getLastRow() + 1, toAppend);
     upsertMasters_(toAppend.map(rowToFlight_));
   }
   var refreshed = (toAppend.length || updated) ? refreshYearSheets_(null) : [];
   return { inserted: toAppend.length, updated: updated, skipped: skipped, errors: errors, refreshed: refreshed };
+}
+
+/**
+ * Menu / editor: repair the Flights sheet after Sheets auto-converted text cells (e.g. a remark
+ * "1:30" stored as a time). Re-applies text format to the text columns and rewrites every row
+ * through the normal path, then rebuilds all year sheets. Returns the number of rows rewritten.
+ */
+function repairFlightsSheetFormats() {
+  var sh = ss_().getSheetByName(SHEET_FLIGHTS);
+  if (!sh) throw new Error('Flights シートがありません');
+  var flights = readAllFlights_(); // rowToFlight_ already converts Date / day-fraction back to text
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    // Whole-column text format so future manual edits are safe too.
+    sh.getRange(2, colIndex_('date') + 1, sh.getMaxRows() - 1, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
+    sh.getRange(2, colIndex_('remarks') + 1, sh.getMaxRows() - 1, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');
+    flights.forEach(function (f) { writeFlightRows_(sh, f._row, [flightToRow_(f)]); });
+    refreshYearSheets_(null, sortFlights_(flights));
+  } finally { lock.releaseLock(); }
+  Logger.log('Flights シートを修復しました: ' + flights.length + ' 行');
+  return flights.length;
 }
 
 function dupKey_(f) {

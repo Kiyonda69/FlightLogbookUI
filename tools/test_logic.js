@@ -65,6 +65,22 @@ check('2017-12 legs', d17.flights.length, 27);
 check('2017-12 前項までの合計 takeoffs', d17.totals.carried.takeoffs, 1669);
 check('2017-12 合計 block', ctx.fmtMinutes_(d17.totals.total.block), '8876:54'); // 369 days 20:54
 
+// --- text cells survive Sheets' auto type conversion (remarks "1:30", clocks, "5.30" dates)
+var advt = ctx.apiGetMonth('2017-08').flights.filter(function (f) { return f.flight_no === 'ADVT'; })[0];
+check('remark "1:30" stays text after import', advt.remarks, '1:30');
+check('clock "00:00" stays text after import', advt.dep_time, '00:00');
+check('date stays text after import', advt.date, '2017-08-30');
+// simulate a sheet corrupted before the fix: remark stored as a time value / Date, then repair
+var fsh = ctx.__mockSpreadsheet.getSheetByName('Flights');
+advt._row = ctx.readAllFlights_().filter(function (f) { return f.flight_no === 'ADVT' && f.date === '2017-08-30'; })[0]._row;
+fsh.rows[advt._row - 1][ctx.colIndex_('remarks')] = 0.0625;
+check('corrupted day-fraction remark read back as text', ctx.apiGetMonth('2017-08').flights.filter(function (f) { return f.flight_no === 'ADVT'; })[0].remarks, '1:30');
+fsh.rows[advt._row - 1][ctx.colIndex_('remarks')] = new Date(1899, 11, 30, 3, 0);
+check('corrupted Date remark read back as text', ctx.apiGetMonth('2017-08').flights.filter(function (f) { return f.flight_no === 'ADVT'; })[0].remarks, '03:00');
+check('repairFlightsSheetFormats rewrites all rows', ctx.repairFlightsSheetFormats(), 860);
+check('repair leaves text cells as strings', typeof fsh.rows[advt._row - 1][ctx.colIndex_('remarks')], 'string');
+check('cumulative unchanged after repair', ctx.apiBootstrap().cumulative, expected);
+
 // --- year sheets are created by the import (all years present in the data)
 var sheetNames = function () { return ctx.__mockSpreadsheet.getSheets().map(function (s) { return s.getName(); }).filter(function (n) { return n.indexOf('飛行日誌_') === 0; }).sort(); };
 check('import created one sheet per year', sheetNames(), ['飛行日誌_2017', '飛行日誌_2018', '飛行日誌_2019', '飛行日誌_2020', '飛行日誌_2021', '飛行日誌_2022', '飛行日誌_2023', '飛行日誌_2024']);
@@ -106,9 +122,10 @@ check('year sheet name', yr.sheetName, '飛行日誌_2024');
 check('year sheet leg count', yr.count, 68);
 var ysheet = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2024');
 var yrows = ysheet.rows;
-var titles = yrows.map(function (r) { return r[0]; }).filter(function (v) { return /^2024年\d{1,2}月$/.test(String(v)); });
-check('year sheet has 12 month titles', titles, ['2024年1月', '2024年2月', '2024年3月', '2024年4月', '2024年5月', '2024年6月', '2024年7月', '2024年8月', '2024年9月', '2024年10月', '2024年11月', '2024年12月']);
-check('year sheet header row', yrows[1][0] + '|' + yrows[1][11], '月日|機長・単独・副機長または機長見習業務の時間');
+var titles = yrows.map(function (r) { return r[0]; }).filter(function (v) { return /^\d{1,2}月$/.test(String(v)); });
+check('year sheet has 12 month titles', titles, ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']);
+check('year sheet header row', yrows[1][0] + '|' + yrows[1][1] + '|' + yrows[1][11], '月日\n＿＿年|航空機\nの型式|機長・単独・副機長または機長見習業務の時間');
+check('year sheet header INST sub-label', yrows[2][27] + '|' + yrows[2][28], 'INST|');
 var grand = yrows.filter(function (r) { return r[7] === '合  計'; });
 check('year sheet has 12 合計 rows', grand.length, 12);
 check('year sheet last 合計 == cumulative', Math.round(grand[11][10] * 1440), expected.block);
@@ -119,8 +136,18 @@ check('2024-05-30 written as text "5.30"', yrows.some(function (r) { return r[0]
 check('no numeric 5.3 in 月日 column', yrows.some(function (r) { return r[0] === 5.3; }), false);
 var legRow = yrows.filter(function (r) { return r[7] === 'JL10'; })[0];
 check('clocks stay text', typeof legRow[5] === 'string' && /^\d{2}:\d{2}$/.test(legRow[5]), true);
-check('empty month block padded to 15 rows', (function () { var i = yrows.findIndex(function (r) { return r[0] === '2024年11月'; }); return yrows[i + 3 + 15][7]; })(), '項 小 計');
-check('header merges built', ysheet.merges.length, 12 * (8 + 1 + 1 + 1 + 1 + 1 + 5 + 1));
+check('empty month block padded to 15 rows', (function () { var i = yrows.findIndex(function (r) { return r[0] === '11月'; }); return yrows[i + 3 + 15][7]; })(), '項 小 計');
+check('empty padding rows carry no 0:00 fillers', (function () { var i = yrows.findIndex(function (r) { return r[0] === '11月'; }); return yrows[i + 3].every(function (v) { return v === ''; }); })(), true);
+check('header merges + totals-left merge built', ysheet.merges.length, 12 * (8 + 1 + 1 + 1 + 1 + 1 + 5 + 1 + 1));
+check('totals-left merge spans A..G x 3', ysheet.merges.some(function (m) { return m[1] === 1 && m[2] === 3 && m[3] === 7; }), true);
+check('column widths applied (29 cols)', Object.keys(ysheet.colWidths).length, 29);
+check('header rows taller', ysheet.rowHeights[2], 34);
+check('body rows 21px', ysheet.rowHeights[4], 21);
+// design borders: thin grid, medium frame, header bottom, totals top, 8 group columns, dotted 離陸|着陸
+var styles = ysheet.borderCalls.map(function (b) { return b[b.length - 1]; });
+check('medium borders applied', styles.filter(function (s) { return s === 'SOLID_MEDIUM'; }).length, 12 * (1 + 1 + 1 + 8));
+check('dotted 離陸|着陸 border applied per block', styles.filter(function (s) { return s === 'DOTTED'; }).length, 12);
+check('dotted border sits on column I right edge', ysheet.borderCalls.filter(function (b) { return b[b.length - 1] === 'DOTTED'; }).every(function (b) { return b[1] === 9 && b[3] === 1 && b[7] === true; }), true);
 var mergesBefore = ysheet.merges.length;
 ctx.apiRebuildYearReport('2024');
 check('unchanged layout: merges not rebuilt', ysheet.merges.length, mergesBefore);
@@ -129,7 +156,7 @@ check('rebuild rejects bad year', /年の指定/.test(badYear || ''), true);
 check('apiListReports newest first', ctx.apiListReports()[0], '飛行日誌_2025');
 // a month with more than 15 legs grows the block (2018-02 has 24 legs, so layout differs from padding)
 var s18 = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2018');
-var febIdx = s18.rows.findIndex(function (r) { return r[0] === '2018年2月'; });
+var febIdx = s18.rows.findIndex(function (r) { return r[0] === '2月'; });
 var febLegs = 0; for (var k = febIdx + 3; s18.rows[k][7] !== '項 小 計'; k++) if (s18.rows[k][1]) febLegs++;
 check('2018-02 block holds all legs', febLegs, ctx.apiGetMonth('2018-02').flights.length);
 check('settings change rebuilds all year sheets', (function () { ctx.apiSaveSettings({ pilot_name: 'テスト' }); return s18.rows[s18.rows.length - 1][0].indexOf('テスト') >= 0; })(), true);

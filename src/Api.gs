@@ -21,6 +21,19 @@ function readAllFlights_() {
   return out;
 }
 
+/**
+ * Write flight rows into the Flights sheet, forcing text format on the text/date/time columns
+ * FIRST so Sheets never auto-converts "5.30", "23:40" or a remark like "1:30" into numbers/times.
+ * Text columns are the contiguous groups B..I (date..flight_no) and AC..AF (remarks..updated_at).
+ */
+function writeFlightRows_(sh, startRow, rows) {
+  var n = rows.length;
+  if (!n) return;
+  sh.getRange(startRow, colIndex_('date') + 1, n, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
+  sh.getRange(startRow, colIndex_('remarks') + 1, n, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');
+  sh.getRange(startRow, 1, n, FLIGHT_COLUMNS.length).setValues(rows);
+}
+
 function sortFlights_(list) {
   return list.sort(function (a, b) {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1;
@@ -80,7 +93,8 @@ function apiAddFlight(input) {
   lock.waitLock(20000);
   var refreshed;
   try {
-    ss_().getSheetByName(SHEET_FLIGHTS).appendRow(flightToRow_(f));
+    var sh = ss_().getSheetByName(SHEET_FLIGHTS);
+    writeFlightRows_(sh, sh.getLastRow() + 1, [flightToRow_(f)]);
     upsertMasters_([f]);
     refreshed = refreshYearSheets_(f.date.substring(0, 4));
   } finally { lock.releaseLock(); }
@@ -101,8 +115,7 @@ function apiUpdateFlight(input) {
   lock.waitLock(20000);
   var refreshed;
   try {
-    ss_().getSheetByName(SHEET_FLIGHTS)
-      .getRange(existing._row, 1, 1, FLIGHT_COLUMNS.length).setValues([flightToRow_(f)]);
+    writeFlightRows_(ss_().getSheetByName(SHEET_FLIGHTS), existing._row, [flightToRow_(f)]);
     upsertMasters_([f]);
     var fromYear = existing.date < f.date ? existing.date.substring(0, 4) : f.date.substring(0, 4);
     refreshed = refreshYearSheets_(fromYear);

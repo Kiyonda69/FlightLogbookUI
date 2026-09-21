@@ -60,7 +60,7 @@ var TOTAL_KEYS = [
 
 /** JCAB 飛行日誌 two-row header used by the report sheet (29 columns, A..AC). */
 var REPORT_HEADER_TOP = [
-  '月日', '航空機の型式', '登録記号', '出発地', '到着地', '出発時刻', '到着時刻', '飛行内容',
+  '月日\n＿＿年', '航空機\nの型式', '登録記号', '出発地', '到着地', '出発時刻', '到着時刻', '飛行内容',
   '離着陸回数', '', '飛行時間',
   '機長・単独・副機長または機長見習業務の時間', '', '', '', '',
   '副操縦士または教官同乗教育の時間', '', '', '',
@@ -73,7 +73,7 @@ var REPORT_HEADER_BOTTOM = [
   '機長 (PIC)', '単独・副機長 (SOLO or SIC)', '機長見習業務 (PUS)', '野外飛行', '夜間飛行',
   '副操縦士', '同乗教育', '野外飛行', '夜間飛行',
   'フード', '計器飛行',
-  '', '', '', '', '', '', ''
+  '', '', '', '', '', 'INST', ''
 ];
 /** Flight-record keys in report column order (A..AB). AC (自由欄 2nd col) stays blank. */
 var REPORT_KEYS = [
@@ -121,9 +121,10 @@ function setupSpreadsheet() {
     f.appendRow(FLIGHT_COLUMNS.map(function (c) { return c.key; }));
     f.setFrozenRows(1);
     f.getRange(1, 1, 1, FLIGHT_COLUMNS.length).setFontWeight('bold').setBackground('#e8eaed');
-    // Keep dates / clocks as plain text so Sheets never re-interprets them.
-    f.getRange(2, colIndex_('date') + 1, f.getMaxRows() - 1, 1).setNumberFormat('@');
-    f.getRange(2, colIndex_('dep_time') + 1, f.getMaxRows() - 1, 2).setNumberFormat('@');
+    // Keep dates / clocks / free text as plain text so Sheets never re-interprets them
+    // (B..I = date..flight_no, AC..AF = remarks..updated_at). Writes also re-apply this per row.
+    f.getRange(2, colIndex_('date') + 1, f.getMaxRows() - 1, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
+    f.getRange(2, colIndex_('remarks') + 1, f.getMaxRows() - 1, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');
   }
 
   // Aircraft master
@@ -171,6 +172,7 @@ function onOpen() {
     .addItem('繰越合計を取込 (JSON 貼り付け)', 'importCarryForwardPrompt')
     .addItem('API パスワードを設定', 'setApiPasswordPrompt')
     .addItem('年次帳票をすべて再生成', 'rebuildAllYearReports')
+    .addItem('Flights シートの書式を修復', 'repairFlightsSheetFormats')
     .addItem('マスター再構築 (Flights から)', 'rebuildMastersFromFlights')
     .addToUi();
 }

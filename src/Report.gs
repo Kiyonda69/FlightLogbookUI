@@ -2,17 +2,24 @@
  * Report.gs — JCAB 飛行日誌 year sheets ("飛行日誌_YYYY"), kept up to date automatically.
  *
  * Layout (like a Numbers year sheet): 12 month blocks stacked vertically, each block =
- *   title row  : "YYYY年M月"
+ *   title row  : "M月"
  *   2 rows     : two-row header (REPORT_HEADER_TOP / REPORT_HEADER_BOTTOM)
  *   rows       : one per flight leg, padded to REPORT_MIN_ROWS like the paper form
- *   3 rows     : 項小計 / 前項までの合計 / 合計
+ *   3 rows     : 項小計 / 前項までの合計 / 合計 (cells A..G of these rows merged into one blank cell)
+ *
+ * Design (matches the original Numbers table):
+ *   - thin grid, medium outer frame, medium line under the header and above the totals
+ *   - medium vertical lines at the group boundaries (I, K, L, Q, U, W, Z, AB), dotted line 離陸|着陸
+ *   - alternate row shading (light grey-green) continuing through the total rows
+ *   - everything centred, regular weight, Noto Sans JP 10pt; header rows taller for 2-line labels
  *
  * Regeneration is triggered by Api.gs / Import.gs after every write via refreshYearSheets_(fromYear):
  * the affected year and every later year that has flights or a sheet (their 前項までの合計 change).
  *
- * Performance: the whole sheet is written with ONE setValues; formats/styles use RangeList; the
- * header merges are only rebuilt when the block layout changed since the last build (layout is
- * remembered in Script Properties), so a routine save costs roughly a dozen Sheets calls.
+ * Performance: the whole sheet is written with ONE setValues; every style/border is applied with
+ * RangeList across all 12 blocks (a fixed number of calls per year). Merges, column widths and row
+ * heights are only rebuilt when the layout (block start rows) or REPORT_DESIGN_VERSION changed
+ * since the last build (remembered in Script Properties).
  *
  * Text-like values (月日 "5.30", clocks "23:40") go into cells whose number format is set to text
  * ('@') BEFORE the values are written; otherwise Sheets converts "5.30" into the number 5.3.
@@ -21,7 +28,25 @@
 var REPORT_MIN_ROWS = 15;      // blank rows to pad each month block to
 var REPORT_BLOCK_GAP = 2;      // empty rows between month blocks
 var REPORT_NCOL = 29;          // A..AC
-var REPORT_LAYOUT_KEY = 'report_layout_'; // Script Properties: report_layout_<sheetName> = JSON block starts
+var REPORT_LAYOUT_KEY = 'report_layout_'; // Script Properties: report_layout_<sheetName>
+var REPORT_DESIGN_VERSION = 2; // bump when merges / widths / heights change, forcing a relayout
+
+var REPORT_FONT = 'Noto Sans JP';
+var REPORT_FONT_SIZE = 10;
+var REPORT_SHADE = '#eef3f2';
+var REPORT_LINE = '#000000';
+var REPORT_GROUP_COLS = [9, 11, 12, 17, 21, 23, 26, 28]; // medium line on the LEFT of these columns
+var REPORT_HEADER_ROW_HEIGHT = 34;
+var REPORT_ROW_HEIGHT = 21;
+var REPORT_COL_WIDTHS = [
+  42, 44, 60, 46, 46, 52, 52, 84,   // 月日 型式 登録記号 出発地 到着地 出発時刻 到着時刻 飛行内容
+  42, 42, 76,                       // 離陸 着陸 飛行時間
+  66, 150, 118, 66, 66,             // 機長 単独・副機長 PUS 野外 夜間
+  66, 66, 66, 66,                   // 副操縦士 同乗教育 野外 夜間
+  66, 100,                          // フード 計器飛行
+  74, 74, 56, 66, 96,               // 模擬 FTD 操縦教員 航空機関士 その他
+  62, 46                            // 自由欄 (INST) / 自由欄 2
+];
 
 /* ---------- public entry points ---------- */
 
@@ -73,11 +98,12 @@ function rebuildYearSheet_(year, all) {
   var plan = planYear_(year, all);
   var nrows = plan.grid.length;
   if (sh.getMaxRows() < nrows) sh.insertRowsAfter(sh.getMaxRows(), nrows - sh.getMaxRows());
+  if (sh.getMaxColumns() < REPORT_NCOL) sh.insertColumnsAfter(sh.getMaxColumns(), REPORT_NCOL - sh.getMaxColumns());
 
-  // Layout (block start rows) decides whether merges must be rebuilt.
+  // Layout (block start rows + design version) decides whether merges/widths/heights must be rebuilt.
   var props = PropertiesService.getScriptProperties();
   var layoutKey = REPORT_LAYOUT_KEY + name;
-  var layout = JSON.stringify(plan.blockStarts);
+  var layout = JSON.stringify({ v: REPORT_DESIGN_VERSION, starts: plan.blocks.map(function (b) { return b.start + ':' + b.nBody; }) });
   var relayout = isNew || props.getProperty(layoutKey) !== layout;
 
   sh.clear();
@@ -91,17 +117,31 @@ function rebuildYearSheet_(year, all) {
 
   sh.getRange(1, 1, nrows, REPORT_NCOL).setValues(plan.grid);
 
-  // Styles, batched with RangeList.
-  sh.getRangeList(plan.titleRanges).setFontWeight('bold');
-  sh.getRangeList(plan.headerRanges).setFontWeight('bold').setHorizontalAlignment('center')
-    .setVerticalAlignment('middle').setWrap(true).setBackground('#f1f3f4');
-  sh.getRangeList(plan.totalRanges).setFontWeight('bold').setBackground('#fef7e0');
-  sh.getRangeList(plan.dataRanges).setHorizontalAlignment('center');
-  sh.getRangeList(plan.tableRanges).setBorder(true, true, true, true, true, true);
+  // ----- typography & alignment (whole used area, then per-part tweaks) -----
+  sh.getRange(1, 1, nrows, REPORT_NCOL).setFontFamily(REPORT_FONT).setFontSize(REPORT_FONT_SIZE)
+    .setVerticalAlignment('middle').setHorizontalAlignment('center').setFontWeight('normal');
+  sh.getRangeList(plan.titleRanges).setHorizontalAlignment('left');
+  sh.getRangeList(plan.headerRanges).setWrap(true);
+  sh.getRangeList(plan.shadeRanges).setBackground(REPORT_SHADE);
 
+  // ----- borders -----
+  var S = SpreadsheetApp.BorderStyle;
+  var tables = sh.getRangeList(plan.tableRanges);
+  tables.setBorder(true, true, true, true, true, true, REPORT_LINE, S.SOLID);              // thin grid
+  tables.setBorder(true, true, true, true, null, null, REPORT_LINE, S.SOLID_MEDIUM);       // outer frame
+  sh.getRangeList(plan.headerRanges).setBorder(null, null, true, null, null, null, REPORT_LINE, S.SOLID_MEDIUM);
+  sh.getRangeList(plan.totalRanges).setBorder(true, null, null, null, null, null, REPORT_LINE, S.SOLID_MEDIUM);
+  REPORT_GROUP_COLS.forEach(function (c) {
+    sh.getRangeList(plan.blocks.map(function (b) { return a1_(b.h1, c, b.lastRow - b.h1 + 1, 1); }))
+      .setBorder(null, true, null, null, null, null, REPORT_LINE, S.SOLID_MEDIUM);
+  });
+  sh.getRangeList(plan.blocks.map(function (b) { return a1_(b.h2, 9, b.lastRow - b.h2 + 1, 1); }))
+    .setBorder(null, null, null, true, null, null, REPORT_LINE, S.DOTTED);                 // 離陸 ┊ 着陸
+
+  // ----- structure that only changes with the layout -----
   if (relayout) {
-    plan.blockStarts.forEach(function (start) {
-      var h1 = start + 1;
+    plan.blocks.forEach(function (b) {
+      var h1 = b.h1;
       sh.getRange(h1, 1, 2, 8).mergeVertically();    // 月日..飛行内容
       sh.getRange(h1, 9, 1, 2).merge();              // 離着陸回数
       sh.getRange(h1, 11, 2, 1).mergeVertically();   // 飛行時間
@@ -109,15 +149,15 @@ function rebuildYearSheet_(year, all) {
       sh.getRange(h1, 17, 1, 4).merge();             // 副操縦士または教官同乗教育…
       sh.getRange(h1, 21, 1, 2).merge();             // 計器飛行時間
       sh.getRange(h1, 23, 2, 5).mergeVertically();   // 模擬飛行装置..その他
-      sh.getRange(h1, 28, 2, 2).merge();             // 自由欄
+      sh.getRange(h1, 28, 1, 2).merge();             // 自由欄 (INST / blank below)
+      sh.getRange(b.totalRow, 1, 3, 7).merge();      // blank area left of the total labels
+      sh.setRowHeights(h1, 2, REPORT_HEADER_ROW_HEIGHT);
     });
-    props.setProperty(layoutKey, layout);
-  }
-  if (isNew) {
-    sh.setColumnWidths(1, REPORT_NCOL, 62);
-    sh.setColumnWidth(8, 80);
-    sh.setColumnWidth(28, 110);
+    sh.setRowHeights(1, nrows, REPORT_ROW_HEIGHT);
+    plan.blocks.forEach(function (b) { sh.setRowHeights(b.h1, 2, REPORT_HEADER_ROW_HEIGHT); });
+    REPORT_COL_WIDTHS.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
     sh.setFrozenRows(0);
+    props.setProperty(layoutKey, layout);
   }
   SpreadsheetApp.flush();
   return { sheetName: name, url: ss.getUrl() + '#gid=' + sh.getSheetId(), count: plan.count };
@@ -130,7 +170,7 @@ function rebuildYearSheet_(year, all) {
 function planYear_(year, all) {
   var settings = getSettings_();
   var ncol = REPORT_NCOL;
-  var grid = [], blockStarts = [], titleRanges = [], headerRanges = [], totalRanges = [], dataRanges = [], tableRanges = [];
+  var grid = [], blocks = [], titleRanges = [], headerRanges = [], totalRanges = [], tableRanges = [], shadeRanges = [];
   var count = 0;
   var label = { subtotal: '項 小 計', carried: '前項までの合計', total: '合  計' };
 
@@ -142,9 +182,8 @@ function planYear_(year, all) {
 
     if (m > 1) for (var g = 0; g < REPORT_BLOCK_GAP; g++) grid.push(blankRow_(ncol));
     var start = grid.length + 1;                 // 1-based sheet row of the title
-    blockStarts.push(start);
 
-    var title = blankRow_(ncol); title[0] = year + '年' + m + '月';
+    var title = blankRow_(ncol); title[0] = m + '月';
     grid.push(title);
     grid.push(REPORT_HEADER_TOP.slice());
     grid.push(REPORT_HEADER_BOTTOM.slice());
@@ -167,12 +206,14 @@ function planYear_(year, all) {
       grid.push(row);
     });
 
-    var h1 = start + 1, firstBody = start + 3, totalRow = firstBody + nBody, lastRow = totalRow + 2;
-    titleRanges.push(a1_(start, 1, 1, ncol));
+    var h1 = start + 1, h2 = start + 2, firstBody = start + 3, totalRow = firstBody + nBody, lastRow = totalRow + 2;
+    blocks.push({ start: start, h1: h1, h2: h2, firstBody: firstBody, nBody: nBody, totalRow: totalRow, lastRow: lastRow });
+    titleRanges.push(a1_(start, 1, 1, 1));
     headerRanges.push(a1_(h1, 1, 2, ncol));
     totalRanges.push(a1_(totalRow, 1, 3, ncol));
-    dataRanges.push(a1_(firstBody, 1, lastRow - firstBody + 1, ncol));
     tableRanges.push(a1_(h1, 1, lastRow - h1 + 1, ncol));
+    // alternate shading: 2nd, 4th, ... row of the body, continuing through the total rows
+    for (var r = firstBody + 1; r <= lastRow; r += 2) shadeRanges.push(a1_(r, 1, 1, ncol));
   }
 
   // footer note
@@ -182,9 +223,10 @@ function planYear_(year, all) {
     (settings.licence_no ? '技能証明番号 ' + settings.licence_no + '　' : '') +
     '時刻基準: ' + settings.time_basis + '　更新: ' + parseDateStr_(new Date());
   grid.push(note);
+  titleRanges.push(a1_(grid.length, 1, 1, 1));
 
-  return { grid: grid, blockStarts: blockStarts, count: count, titleRanges: titleRanges, headerRanges: headerRanges,
-    totalRanges: totalRanges, dataRanges: dataRanges, tableRanges: tableRanges };
+  return { grid: grid, blocks: blocks, count: count, titleRanges: titleRanges, headerRanges: headerRanges,
+    totalRanges: totalRanges, tableRanges: tableRanges, shadeRanges: shadeRanges };
 }
 
 /* ---------- helpers ---------- */
