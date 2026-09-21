@@ -140,6 +140,8 @@ function buildDetailGrid() {
     var d = document.createElement('div');
     d.innerHTML = '<label title="' + esc(lbl(k)) + '">' + esc(lbl(k)) + '</label><input class="dur" name="' + k + '" placeholder="H:MM">';
     g.appendChild(d);
+    // these inputs are created after bindForm(): give them the same "0130" → "1:30" shortcut
+    d.querySelector('input').addEventListener('change', function () { this.value = normClock(this.value, false); });
   });
 }
 
