@@ -29,7 +29,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   ├── Util.gs              分/時刻/日付のパース・整形、normalizeFlight_（バリデーション）
 │   ├── Api.gs               UI から呼ぶ関数 (apiBootstrap, apiGetMonth, apiAdd/Update/DeleteFlight, 設定, マスター)
 │   ├── Totals.gs            項小計 / 前項までの合計 / 合計、年間集計、直近 N 日
-│   ├── Report.gs            月次 JCAB 様式シート「飛行日誌_YYYY-MM」を生成
+│   ├── Report.gs            JCAB 様式シート生成: 月次「飛行日誌_YYYY-MM」/ 年次「飛行日誌_YYYY」（12 か月ブロック、Numbers の年シート相当）
 │   ├── Import.gs            CSV / 繰越 JSON 取込（importCarryForwardFromDrive / importCarryForwardPrompt は引数なしでエディタ・メニューから実行可）
 │   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 帳票 / 設定・取込）
 │   ├── Style.html           CSS
@@ -102,6 +102,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
   - 合計 = 前項までの合計 + 項小計
 - 重複判定キー（CSV 取込）: `date | dep_time | flight_no | registration`。
+- 帳票に文字列らしき値（月日 `"5.30"`、時刻 `"23:40"`）を書くときは **`setNumberFormat('@')` を `setValues` より先に**呼ぶ。後から書式を付けても Sheets は書き込み時点で `5.3` に変換してしまう（実際に起きた不具合）。`dev/mock_gas.js` はこの自動変換を模擬するので、テストで検出できる。
 
 ### 乗務区分プリセット（UI, `applyRole` in Script.html）
 

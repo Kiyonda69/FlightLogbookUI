@@ -109,10 +109,18 @@
 <section class="tab" id="tab-report">
   <div class="card">
     <h2>JCAB 飛行日誌ページ生成</h2>
-    <p class="hint">選択した月の記録をスプレッドシート内に「飛行日誌_YYYY-MM」シートとして生成します（項小計 / 前項までの合計 / 合計 付き）。印刷は Google スプレッドシート側で行ってください。</p>
+    <p class="hint">スプレッドシート内に帳票シートを生成します（各月に 項小計 / 前項までの合計 / 合計 付き）。印刷は Google スプレッドシート側で行ってください。</p>
     <div class="row">
+      <label style="margin:0">月別</label>
       <input type="month" id="reportMonth" style="width:auto">
-      <button class="btn primary" id="btnReport">生成</button>
+      <button class="btn primary" id="btnReport">生成 (飛行日誌_YYYY-MM)</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label style="margin:0">年別 (1月〜12月を 1 シートに)</label>
+      <input type="number" id="reportYear" min="2000" max="2100" style="width:100px">
+      <button class="btn primary" id="btnYearReport">生成 (飛行日誌_YYYY)</button>
+    </div>
+    <div class="row" style="margin-top:8px">
       <a id="reportLink" target="_blank" style="display:none">シートを開く ↗</a>
     </div>
   </div>

@@ -55,6 +55,7 @@ window.addEventListener('DOMContentLoaded', function () {
   $('#sumYear').addEventListener('change', loadSummary);
   $('#recencyDays').addEventListener('change', loadRecency);
   $('#btnReport').addEventListener('click', generateReport);
+  $('#btnYearReport').addEventListener('click', generateYearReport);
   $('#btnSaveSettings').addEventListener('click', saveSettings);
   $('#btnImport').addEventListener('click', importCsv);
   reboot(true);
@@ -75,7 +76,7 @@ function reboot(initial) {
     var lm = $('#listMonth'); lm.innerHTML = '';
     var months = b.months.length ? b.months : [b.today.substring(0, 7)];
     months.forEach(function (m) { var o = document.createElement('option'); o.value = m; o.textContent = m; lm.appendChild(o); });
-    if (initial) { $('#reportMonth').value = b.today.substring(0, 7); resetForm(); }
+    if (initial) { $('#reportMonth').value = b.today.substring(0, 7); $('#reportYear').value = b.today.substring(0, 4); resetForm(); }
   }).catch(function (e) { toast(e.message, true); });
 }
 
@@ -358,6 +359,14 @@ function generateReport() {
   var ym = $('#reportMonth').value; if (!ym) return;
   var b = $('#btnReport'); b.disabled = true;
   call('apiGenerateReport', ym).then(function (r) {
+    toast(r.sheetName + ' を生成しました (' + r.count + ' レグ)');
+    var a = $('#reportLink'); a.href = r.url; a.style.display = ''; loadReports();
+  }).catch(function (e) { toast(e.message, true); }).then(function () { b.disabled = false; });
+}
+function generateYearReport() {
+  var y = $('#reportYear').value; if (!/^\d{4}$/.test(y)) { toast('年を 4 桁で入力してください', true); return; }
+  var b = $('#btnYearReport'); b.disabled = true;
+  call('apiGenerateYearReport', y).then(function (r) {
     toast(r.sheetName + ' を生成しました (' + r.count + ' レグ)');
     var a = $('#reportLink'); a.href = r.url; a.style.display = ''; loadReports();
   }).catch(function (e) { toast(e.message, true); }).then(function () { b.disabled = false; });

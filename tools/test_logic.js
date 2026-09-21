@@ -77,16 +77,41 @@ check('reject pic > block', /飛行時間を超えて/.test(thrown || ''), true)
 check('delete', ctx.apiDeleteFlight(added.id), { deleted: added.id });
 check('cumulative restored after delete', ctx.apiBootstrap().cumulative, expected);
 
-// --- report
+// --- report (month)
 var rep = ctx.apiGenerateReport('2024-10');
 check('report sheet name', rep.sheetName, '飛行日誌_2024-10');
 var sh = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2024-10');
 var rows = sh.rows;
-check('report header row 1', rows[0][0] + '|' + rows[0][11], '月日|機長・単独・副機長または機長見習業務の時間');
-check('report first flight date "10.x"', /^10\.\d+$/.test(rows[2][0]), true);
+check('report title', rows[0][0], '2024年10月');
+check('report header row 1', rows[1][0] + '|' + rows[1][11], '月日|機長・単独・副機長または機長見習業務の時間');
+check('report first flight date "10.x" text', /^10\.\d{2}$/.test(rows[3][0]) && typeof rows[3][0] === 'string', true);
+check('report clocks stay text', typeof rows[3][5] === 'string' && /^\d{2}:\d{2}$/.test(rows[3][5]), true);
 var totalRow = rows.filter(function (r) { return r[7] === '合  計'; })[0];
 check('report 合計 block (days)', Math.round(totalRow[10] * 1440), expected.block);
 check('report 合計 takeoffs', totalRow[8], expected.takeoffs);
+// the "5.30 → 5.3" regression: 2024-05-30 must stay the text "5.30"
+var may = ctx.apiGenerateReport('2024-05');
+var mayRows = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2024-05').rows;
+var d30 = mayRows.filter(function (r) { return r[0] === '5.30'; });
+check('2024-05-30 written as text "5.30"', d30.length > 0, true);
+check('no numeric 5.3 in 月日 column', mayRows.some(function (r) { return r[0] === 5.3; }), false);
+check('empty month block still padded', ctx.apiGenerateReport('2020-02').count >= 0 && ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2020-02').rows.length >= 3 + 15 + 3, true);
+
+// --- report (year, 12 blocks like the Numbers year sheet)
+var yr = ctx.apiGenerateYearReport('2024');
+check('year report sheet name', yr.sheetName, '飛行日誌_2024');
+check('year report leg count', yr.count, 68);
+var yrows = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2024').rows;
+var titles = yrows.map(function (r) { return r[0]; }).filter(function (v) { return /^2024年\d{1,2}月$/.test(String(v)); });
+check('year report has 12 month titles', titles, ['2024年1月', '2024年2月', '2024年3月', '2024年4月', '2024年5月', '2024年6月', '2024年7月', '2024年8月', '2024年9月', '2024年10月', '2024年11月', '2024年12月']);
+var grand = yrows.filter(function (r) { return r[7] === '合  計'; });
+check('year report has 12 合計 rows', grand.length, 12);
+check('year report last 合計 == cumulative', Math.round(grand[11][10] * 1440), expected.block);
+check('year report Dec 前項までの合計 == Oct 合計 (no Nov/Dec flights)', Math.round(yrows.filter(function (r) { return r[7] === '前項までの合計'; })[11][10] * 1440), expected.block);
+check('year report 5.30 text', yrows.some(function (r) { return r[0] === '5.30'; }), true);
+var badYear = null; try { ctx.apiGenerateYearReport('24'); } catch (e) { badYear = e.message; }
+check('year report rejects bad year', /年の指定/.test(badYear || ''), true);
+check('apiListReports includes year sheet', ctx.apiListReports().indexOf('飛行日誌_2024') >= 0, true);
 
 // --- year summary / recency
 var ys = ctx.apiYearSummary('2018');

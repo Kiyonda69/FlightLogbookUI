@@ -15,21 +15,36 @@
     }
     return out;
   };
+  // Simulates Sheets' automatic type conversion: a string that looks like a number or a clock
+  // written into a cell whose number format is not text ('@') becomes a Number.
+  function coerce(sheet, r, c, v) {
+    if (typeof v !== 'string') return v;
+    var fmt = sheet.formats[r + ',' + c];
+    if (fmt === '@') return v;
+    if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+    var m = v.match(/^(\d{1,2}):(\d{2})$/);
+    if (m) return (Number(m[1]) * 60 + Number(m[2])) / 1440;
+    return v;
+  }
   Range.prototype.setValues = function (vals) {
     for (var i = 0; i < vals.length; i++) {
       while (this.s.rows.length < this.r + i) this.s.rows.push([]);
       var row = this.s.rows[this.r - 1 + i];
-      for (var j = 0; j < vals[i].length; j++) row[this.c - 1 + j] = vals[i][j];
+      for (var j = 0; j < vals[i].length; j++) row[this.c - 1 + j] = coerce(this.s, this.r + i, this.c + j, vals[i][j]);
     }
     return this;
   };
   Range.prototype.getValue = function () { return this.getValues()[0][0]; };
   Range.prototype.setValue = function (v) { return this.setValues([[v]]); };
-  ['setNumberFormat', 'setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment',
+  Range.prototype.setNumberFormat = function (fmt) {
+    for (var i = 0; i < this.nr; i++) for (var j = 0; j < this.nc; j++) this.s.formats[(this.r + i) + ',' + (this.c + j)] = fmt;
+    return this;
+  };
+  ['setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment',
     'setWrap', 'merge', 'setBorder'].forEach(function (m) { Range.prototype[m] = function () { return this; }; });
 
   var sheetIdSeq = 100;
-  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.id = sheetIdSeq++; }
+  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.id = sheetIdSeq++; }
   Sheet.prototype.getName = function () { return this.name; };
   Sheet.prototype.getSheetId = function () { return this.id; };
   Sheet.prototype.getLastRow = function () {
@@ -40,7 +55,7 @@
   Sheet.prototype.appendRow = function (r) { this.rows.push(r.slice()); return this; };
   Sheet.prototype.getRange = function (r, c, nr, nc) { return new Range(this, r, c, nr || 1, nc || 1); };
   Sheet.prototype.deleteRow = function (r) { this.rows.splice(r - 1, 1); return this; };
-  Sheet.prototype.clear = function () { this.rows = []; return this; };
+  Sheet.prototype.clear = function () { this.rows = []; this.formats = {}; return this; };
   ['setFrozenRows', 'hideColumns', 'setColumnWidths', 'setColumnWidth'].forEach(function (m) { Sheet.prototype[m] = function () { return this; }; });
 
   function Spreadsheet() { this.sheets = []; }
