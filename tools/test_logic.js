@@ -116,16 +116,31 @@ check('cumulative still correct', ctx.apiBootstrap().cumulative, expected);
 
 // --- JSON API (doPost) used by the GitHub Pages front-end
 function post(obj) { return JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(obj) } }).getContent()); }
-check('doPost without token configured', post({ fn: 'apiPing' }).ok, false);
-var token = ctx.generateApiToken();
-check('generateApiToken length', token.length, 64);
-check('doPost wrong token rejected', /認証エラー/.test(post({ token: 'x', fn: 'apiPing' }).error), true);
-check('doPost ping ok', post({ token: token, fn: 'apiPing' }).ok, true);
-check('doPost non-api function blocked', post({ token: token, fn: 'setupSpreadsheet' }).ok, false);
-check('doPost private function blocked', post({ token: token, fn: 'readAllFlights_' }).ok, false);
-check('doPost apiGetMonth args', post({ token: token, fn: 'apiGetMonth', args: ['2024-10'] }).result.flights.length, 7);
-check('doPost error surfaces message', /月の指定/.test(post({ token: token, fn: 'apiGetMonth', args: ['bad'] }).error), true);
+check('doPost without password configured', /API_PASSWORD が未設定/.test(post({ fn: 'apiPing' }).error), true);
+var shortErr = null; try { ctx.setApiPassword_('abc'); } catch (e) { shortErr = e.message; }
+check('password shorter than 4 rejected', /4 文字以上/.test(shortErr || ''), true);
+ctx.__mockPromptText = ' hikouki2026 '; ctx.setApiPasswordPrompt();
+check('password set via menu prompt (trimmed)', ctx.PropertiesService.getScriptProperties().getProperty('API_PASSWORD'), 'hikouki2026');
+var pw = 'hikouki2026';
+check('doPost wrong password rejected', /パスワードが一致しません/.test(post({ password: 'x', fn: 'apiPing' }).error), true);
+check('doPost missing password rejected', post({ fn: 'apiPing' }).ok, false);
+check('doPost ping ok', post({ password: pw, fn: 'apiPing' }).ok, true);
+check('doPost password with surrounding spaces ok', post({ password: ' ' + pw + ' ', fn: 'apiPing' }).ok, true);
+check('doPost non-api function blocked', post({ password: pw, fn: 'setupSpreadsheet' }).ok, false);
+check('doPost private function blocked', post({ password: pw, fn: 'readAllFlights_' }).ok, false);
+check('doPost checkPassword_ not callable', post({ password: pw, fn: 'checkPassword_' }).ok, false);
+check('doPost apiGetMonth args', post({ password: pw, fn: 'apiGetMonth', args: ['2024-10'] }).result.flights.length, 7);
+check('doPost error surfaces message', /月の指定/.test(post({ password: pw, fn: 'apiGetMonth', args: ['bad'] }).error), true);
 check('doPost bad JSON body', JSON.parse(ctx.doPost({ postData: { contents: '{not json' } }).getContent()).ok, false);
+// lockout after AUTH_MAX_FAILURES consecutive failures; success resets the counter
+for (var i = 0; i < ctx.AUTH_MAX_FAILURES; i++) post({ password: 'wrong' + i, fn: 'apiPing' });
+check('locked after max failures (even with right password)', /ロックされています/.test(post({ password: pw, fn: 'apiPing' }).error), true);
+ctx.resetAuthLock();
+check('resetAuthLock unlocks', post({ password: pw, fn: 'apiPing' }).ok, true);
+for (var j = 0; j < ctx.AUTH_MAX_FAILURES - 1; j++) post({ password: 'wrong', fn: 'apiPing' });
+check('success before lock resets counter', post({ password: pw, fn: 'apiPing' }).ok, true);
+check('counter reset: one more failure does not lock', /パスワードが一致しません/.test(post({ password: 'wrong', fn: 'apiPing' }).error), true);
+check('still usable', post({ password: pw, fn: 'apiPing' }).ok, true);
 
 console.log(failures ? ('\n' + failures + ' FAILED') : '\nALL PASSED');
 process.exit(failures ? 1 : 0);

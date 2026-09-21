@@ -112,6 +112,16 @@
       };
     }
   };
+  var cache = {};
+  g.CacheService = {
+    getScriptCache: function () {
+      return {
+        get: function (k) { var e = cache[k]; if (!e) return null; if (e.exp < Date.now()) { delete cache[k]; return null; } return e.v; },
+        put: function (k, v, sec) { cache[k] = { v: String(v), exp: Date.now() + (sec || 600) * 1000 }; },
+        remove: function (k) { delete cache[k]; }
+      };
+    }
+  };
   g.ContentService = {
     MimeType: { JSON: 'application/json', TEXT: 'text/plain' },
     createTextOutput: function (text) {

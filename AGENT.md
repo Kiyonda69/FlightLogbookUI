@@ -24,7 +24,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   └── .nojekyll
 ├── src/                     Apps Script プロジェクト（clasp の rootDir）
 │   ├── appsscript.json      マニフェスト（timeZone=Asia/Tokyo, V8, webapp）
-│   ├── Code.gs              doGet（HtmlService UI）/ doPost（JSON API, トークン認証）/ generateApiToken
+│   ├── Code.gs              doGet（HtmlService UI）/ doPost（JSON API, パスワード認証 + 失敗ロック）/ setApiPasswordPrompt / resetAuthLock
 │   ├── Schema.gs            シート名・列定義 (FLIGHT_COLUMNS, TOTAL_KEYS, REPORT_*)・setupSpreadsheet・onOpen
 │   ├── Util.gs              分/時刻/日付のパース・整形、normalizeFlight_（バリデーション）
 │   ├── Api.gs               UI から呼ぶ関数 (apiBootstrap, apiGetMonth, apiAdd/Update/DeleteFlight, 設定, マスター)
@@ -41,10 +41,11 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 ├── dev/
 │   ├── mock_gas.js          SpreadsheetApp / Utilities / LockService / PropertiesService / ContentService の模擬
 │   ├── serve.py             ローカルプレビュー (http://localhost:8765/ = HtmlService 版, /docs/ = Pages 版)
-│   └── api_server.js        doPost をローカル HTTP で公開する API モック (http://localhost:8766/api, token=dev-token)
+│   └── api_server.js        doPost をローカル HTTP で公開する API モック (http://localhost:8766/api, password=dev-pass)
 ├── data/                    【git 管理外】個人の飛行記録
 │   ├── flights.csv          旧データ 860 行（列 = Flights シートのキー、時間は分）
 │   └── carry_forward.json   2017-08 時点の「前項までの合計」（システム導入前累計）
+├── pages.config.json        Pages ビルド設定 { "apiUrl": "<Apps Script の /exec URL>" }（パスワードは書かない）
 ├── .claude/launch.json      プレビューサーバー定義 (logbook-dev / logbook-api)
 ├── .clasp.json.example      clasp 設定の雛形（実物 .clasp.json は git 管理外）
 └── .claspignore / .gitignore
@@ -52,10 +53,13 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 
 ### JSON API（`doPost`）の契約
 
-- リクエスト: `POST <exec URL>`、本文は **text/plain** の JSON `{ "token", "fn", "args": [] }`（プリフライトを避けるため Content-Type を付けない）。
+- リクエスト: `POST <exec URL>`、本文は **text/plain** の JSON `{ "password", "fn", "args": [] }`（プリフライトを避けるため Content-Type を付けない）。
 - レスポンス: `{ "ok": true, "result" }` または `{ "ok": false, "error" }`。
 - 呼べるのは名前が `api` + 大文字で始まる関数のみ。末尾 `_` の内部関数や `setupSpreadsheet` は拒否。
-- トークンは Script Properties の `API_TOKEN`（`generateApiToken()` で発行）。静的 UI 側は localStorage の `logbook.apiUrl` / `logbook.apiToken` に保持。
+- 認証は Script Properties の `API_PASSWORD`（ユーザーが決めた覚えやすいパスワード。利用者の判断でランダムトークン方式を廃止した）。設定はメニュー `setApiPasswordPrompt` またはスクリプトプロパティ画面。`checkPassword_` が照合し、連続 `AUTH_MAX_FAILURES` 回失敗で `AUTH_LOCK_MINUTES` 分ロック（CacheService、全体ロック。`resetAuthLock()` で解除）。
+- 静的 UI 側はパスワードを localStorage の `logbook.password` に保持。API URL は `pages.config.json` の `apiUrl` をビルド時に `LOGBOOK_DEFAULT_API_URL` として埋め込む（localStorage の `logbook.apiUrl` は上書き用）。
+- 初回設定は `#password=…`（任意で `&api=…`）のフラグメント付き URL でも可能。読み取り後に `history.replaceState` で URL から除去する。「共有リンクをコピー」がこの形式を生成する。
+- 接続パネル（`#connBar`）を出すのは `ConnError`（未設定・fetch 失敗・HTTP エラー・非 JSON 応答・`認証エラー`）のみ。サーバー側バリデーションエラーはトーストだけ。
 - Apps Script 側のデプロイは「アクセス: 全員」が必要（「自分のみ」だと別オリジンからの fetch は Google ログインへリダイレクトされて失敗する）。
 - fetch は `redirect: 'follow'`（script.google.com → googleusercontent.com のリダイレクトを追う）。
 
@@ -122,7 +126,7 @@ node tools/test_logic.js        # ALL PASSED が出ること。取込後の合�
 
 # 3. UI をローカルで動かす（google.script.run をモックに差し替え、CSV を自動投入）
 python dev/serve.py 8765        # → http://localhost:8765/        HtmlService 版
-node dev/api_server.js 8766     # → http://localhost:8765/docs/   Pages 版（接続設定に http://localhost:8766/api と dev-token）
+node dev/api_server.js 8766     # → http://localhost:8765/docs/   Pages 版（build_pages.py --api-url http://localhost:8766/api でビルドし、パスワード dev-pass）
 
 # 4. Pages 版を再生成（src/ を変えたら必ず）
 python tools/build_pages.py
@@ -156,7 +160,7 @@ python tools/build_pages.py
 
 - `../FLIGHT LOGBOOK.numbers` を書き換える・移動する。
 - `docs/index.html` を直接編集する（`src/` を直して `tools/build_pages.py` で再生成）。
-- `data/` や `*.numbers`、API トークンをコミットする（`.gitignore` 済み。リポジトリは公開の可能性がある）。
+- `data/` や `*.numbers`、API パスワードをコミットする（`.gitignore` 済み。リポジトリは公開の可能性がある）。
 - `Script.html` に `google.script.run` 以外のサーバー呼び出し手段を持ち込む（両 UI の互換が崩れる）。
 - `Flights` シートの列順・見出しを Schema.gs と別に手で変える。
 - 帳票シート `飛行日誌_YYYY-MM` を手編集して正とする（再生成で上書きされる）。

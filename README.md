@@ -57,32 +57,43 @@ Apps Script の HtmlService 画面の代わりに、同じ UI を GitHub Pages�
 
 1. **API を公開デプロイする**: Apps Script「デプロイ > 新しいデプロイ > ウェブアプリ」で
    「次のユーザーとして実行: 自分」「アクセスできるユーザー: **全員**」にする（既存デプロイなら「編集」で変更）。
-   匿名アクセスになる代わりに、次のトークンで保護されます。
-2. **トークンを作る**: エディタで関数 `generateApiToken` を実行し、「実行ログ」に出た `API_TOKEN = …` を控える。
-3. **静的ページをビルドして push する**:
+   匿名アクセスになる代わりに、次のパスワードで保護されます。
+2. **パスワードを決める**: スプレッドシートのメニュー「飛行日誌 > API パスワードを設定」で 4 文字以上の任意のパスワードを入力
+   （Apps Script の「プロジェクトの設定 > スクリプト プロパティ」で `API_PASSWORD` を直接編集しても同じ）。
+   **承知の上のリスク**: URL は公開されるため、守っているのはこのパスワードだけです。連続 20 回失敗すると 10 分間ロックされます
+   （ロックは全員に掛かるので、自分が締め出されたらエディタで `resetAuthLock` を実行）。他サービスと同じパスワードは使わないでください。
+3. **ウェブアプリ URL をページに埋め込んでビルドし、push する**:
+   `pages.config.json` の `apiUrl` にデプロイで表示された `…/exec` URL を書いてからビルドします
+   （URL は秘密ではありません。守るべきはパスワードだけです）。
 
    ```bash
    python tools/build_pages.py
-   git add docs src tools dev AGENT.md README.md .gitignore .claspignore .clasp.json.example .claude
-   git commit -m "Add JCAB logbook app and GitHub Pages front-end"
+   git add -A
+   git commit -m "Build GitHub Pages front-end"
    git push origin main
    ```
 
 4. GitHub のリポジトリ「Settings > Pages > Build and deployment」で
    Source = **Deploy from a branch**, Branch = **main**, Folder = **/docs** を選んで保存。
-5. 数分後に `https://<ユーザー名>.github.io/FlightLogbookUI/` を開き、上部の接続設定に
-   ウェブアプリ URL（`…/exec`）とトークンを入力して「接続」。設定はその端末のブラウザ（localStorage）にだけ保存されます。
+5. 数分後に `https://<ユーザー名>.github.io/FlightLogbookUI/` を開き、上部の接続設定に **パスワードだけ** 入力して「接続」。
+   パスワードはその端末のブラウザ（localStorage）に保存され、次回以降の入力は不要です。
+
+**他の端末（スマホ等）の設定**: パスワードを入力するか、設定済みの端末で「接続設定 > 共有リンクをコピー」を押して得られる
+`https://…/FlightLogbookUI/#password=…` 形式のリンクを 1 回開きます。パスワードが保存され、URL からは自動で消えます。
+ブックマークやホーム画面追加はその後に行ってください。
 
 注意:
 - `.gitignore` により `data/flights.csv` / `data/carry_forward.json` / `*.numbers` は **コミットされません**（個人の飛行記録のため）。取込は手元のファイルから行ってください。リポジトリを private にして履歴管理したい場合だけ該当行を外してください。
-- トークンをリポジトリや `docs/` に書かないこと。漏れたら `generateApiToken` を再実行すれば無効化できます。
+- パスワードをリポジトリや `docs/` に書かないこと。漏れたらメニューから変更すれば無効化できます（全端末で再入力が必要）。
 - 静的ページのソースは `src/` です。`docs/index.html` は生成物なので直接編集せず、`python tools/build_pages.py` で再生成します。
+- 接続パネルは未設定・ネットワーク断・認証エラーのときだけ自動表示されます。プライベートブラウズ（シークレットモード）では localStorage が閉じるたびに消えるため、毎回入力になります。通常モードで使ってください。
 
 ローカルで試す場合は 2 つのサーバーを起動します:
 
 ```bash
-node dev/api_server.js 8766      # Apps Script API の代替（token: dev-token、CSV を自動投入）
-python dev/serve.py 8765         # http://localhost:8765/docs/ に URL http://localhost:8766/api と dev-token を入力
+node dev/api_server.js 8766      # Apps Script API の代替（パスワード: dev-pass、CSV を自動投入）
+python tools/build_pages.py --api-url http://localhost:8766/api   # ローカル API 向けにビルド（コミット前に引数なしで再ビルド）
+python dev/serve.py 8765         # http://localhost:8765/docs/ を開きパスワード dev-pass を入力
 ```
 
 ## 日々の使い方

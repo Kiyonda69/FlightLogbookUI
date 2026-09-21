@@ -169,6 +169,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('飛行日誌')
     .addItem('初期セットアップ', 'setupSpreadsheet')
     .addItem('繰越合計を取込 (JSON 貼り付け)', 'importCarryForwardPrompt')
+    .addItem('API パスワードを設定', 'setApiPasswordPrompt')
     .addItem('今月の帳票を生成', 'generateCurrentMonthReport')
     .addItem('マスター再構築 (Flights から)', 'rebuildMastersFromFlights')
     .addToUi();
