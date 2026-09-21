@@ -118,6 +118,11 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 
 「JCAB 全項目を直接編集」を開けば任意の列を手動上書きできる。プリセットは補助であり、最終値は保存時のフォーム値。
 
+### UI の表記規則
+
+- 画面上では副操縦士を **CO** と表記する（`SIC` は使わない）。列ラベルはサーバーの `FLIGHT_COLUMNS.label`（JCAB 正式名、`SOLO or SIC` を含む）を `lbl(k)` で `SIC → CO` に置換して表示する。帳票シートのヘッダー（`REPORT_HEADER_*`）は JCAB 様式どおり `SIC` のまま。
+- ラベルは必ず 1 行（`white-space: nowrap`、はみ出しは省略記号）。「JCAB 全項目」「繰越合計」グリッドは列幅 160px 以上・ラベル 10px で `単独・副機長 (SOLO or CO)` が折り返さない。
+
 ## 4. 開発ワークフロー
 
 ```bash

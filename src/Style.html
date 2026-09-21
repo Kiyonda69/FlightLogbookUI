@@ -19,7 +19,12 @@
   .card h2 { font-size: 15px; margin: 0 0 10px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
   .grid.narrow { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* JCAB 全項目 grid: long labels (単独・副機長 (SOLO or CO) etc.) must stay on one line */
+  #detailGrid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  #detailGrid label { font-size: 10px; letter-spacing: -0.2px; }
+  #carryGrid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  #carryGrid label { font-size: 10px; letter-spacing: -0.2px; }
   input, select, textarea { width: 100%; padding: 7px 8px; border: 1px solid #cfd4da; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff; }
   input:focus, select:focus { outline: 2px solid #c2dbff; border-color: var(--accent); }
   input.mono { font-family: "SF Mono", Consolas, monospace; text-transform: uppercase; }

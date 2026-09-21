@@ -25,7 +25,12 @@
   .card h2 { font-size: 15px; margin: 0 0 10px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
   .grid.narrow { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* JCAB 全項目 grid: long labels (単独・副機長 (SOLO or CO) etc.) must stay on one line */
+  #detailGrid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  #detailGrid label { font-size: 10px; letter-spacing: -0.2px; }
+  #carryGrid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  #carryGrid label { font-size: 10px; letter-spacing: -0.2px; }
   input, select, textarea { width: 100%; padding: 7px 8px; border: 1px solid #cfd4da; border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff; }
   input:focus, select:focus { outline: 2px solid #c2dbff; border-color: var(--accent); }
   input.mono { font-family: "SF Mono", Consolas, monospace; text-transform: uppercase; }
@@ -117,8 +122,8 @@
       <label style="margin:0">乗務区分</label>
       <div class="seg" id="roleSeg">
         <button type="button" data-role="pic" class="active">機長 (PIC)</button>
-        <button type="button" data-role="sic">副操縦士 (SIC)</button>
-        <button type="button" data-role="split">分割 (PIC+SIC)</button>
+        <button type="button" data-role="sic">副操縦士 (CO)</button>
+        <button type="button" data-role="split">分割 (PIC+CO)</button>
         <button type="button" data-role="sim">SIM</button>
       </div>
       <span class="hint" id="roleHint">飛行時間を PIC と PIC 野外飛行に自動配分します</span>
@@ -343,6 +348,8 @@ function hm(min, blank) {
   return neg + Math.floor(min / 60) + ':' + ('0' + (min % 60)).slice(-2);
 }
 function hours1(min) { return (Number(min || 0) / 60).toFixed(1); }
+/** UI label for a column: the JCAB label from the server, with "SIC" shown as "CO" in the UI. */
+function lbl(k) { return (COLS[k] ? COLS[k].label : k).replace(/SIC/g, 'CO'); }
 function blockOf(dep, arr) {
   if (!dep || !arr) return 0;
   var d = toMin(dep), a = toMin(arr);
@@ -412,7 +419,7 @@ function renderHeader(c) {
   $('#hdrStats').innerHTML =
     '<span>総飛行時間 <b>' + hm(c.block) + '</b></span>' +
     '<span>PIC <b>' + hm(c.pic) + '</b></span>' +
-    '<span>SIC <b>' + hm(c.sic + c.solo_sic) + '</b></span>' +
+    '<span>CO <b>' + hm(c.sic + c.solo_sic) + '</b></span>' +
     '<span>夜間 <b>' + hm(c.pic_night + c.sic_night) + '</b></span>' +
     '<span>計器 <b>' + hm(c.ifr) + '</b></span>' +
     '<span>離陸/着陸 <b>' + c.takeoffs + '/' + c.landings + '</b></span>';
@@ -439,7 +446,7 @@ function buildDetailGrid() {
   DUR_KEYS.forEach(function (k) {
     if (F().elements[k]) return; // already has a dedicated input (block, ifr) — duplicate names would break form.elements[k]
     var d = document.createElement('div');
-    d.innerHTML = '<label>' + esc(COLS[k].label) + '</label><input class="dur" name="' + k + '" placeholder="H:MM">';
+    d.innerHTML = '<label title="' + esc(lbl(k)) + '">' + esc(lbl(k)) + '</label><input class="dur" name="' + k + '" placeholder="H:MM">';
     g.appendChild(d);
   });
 }
@@ -624,7 +631,7 @@ function renderTable(table, flights, opts) {
   };
 }
 function shortLabel(k) {
-  return { aircraft_type: '型式', registration: '登録', dep: '出発', arr: '到着', dep_time: 'OUT', arr_time: 'IN', flight_no: '内容', block: '飛行', pic: 'PIC', pic_xc: 'PIC野外', pic_night: 'PIC夜', sic: 'SIC', sic_xc: 'SIC野外', sic_night: 'SIC夜', ifr: '計器', sim: 'SIM', takeoffs: 'T/O', landings: 'LDG', date: '月日', remarks: '自由欄' }[k] || COLS[k].label;
+  return { aircraft_type: '型式', registration: '登録', dep: '出発', arr: '到着', dep_time: 'OUT', arr_time: 'IN', flight_no: '内容', block: '飛行', pic: 'PIC', pic_xc: 'PIC野外', pic_night: 'PIC夜', sic: 'CO', sic_xc: 'CO野外', sic_night: 'CO夜', ifr: '計器', sim: 'SIM', takeoffs: 'T/O', landings: 'LDG', date: '月日', remarks: '自由欄' }[k] || lbl(k);
 }
 
 function loadMonth(ym) {
@@ -646,7 +653,7 @@ function fillYears() {
 function kpi(el, t, keys) {
   el.innerHTML = keys.map(function (k) {
     var v = k === 'takeoffs' || k === 'landings' ? t[k] : hm(t[k]);
-    return '<div><label>' + esc(COLS[k].label) + '</label><b>' + v + '</b></div>';
+    return '<div><label>' + esc(lbl(k)) + '</label><b>' + v + '</b></div>';
   }).join('');
 }
 var KPI_KEYS = ['block', 'pic', 'sic', 'solo_sic', 'pus', 'pic_xc', 'sic_xc', 'pic_night', 'sic_night', 'ifr', 'hood', 'sim', 'takeoffs', 'landings'];
@@ -688,7 +695,7 @@ function buildCarryGrid(st) {
   TOTAL_KEYS.forEach(function (k) {
     var isCount = k === 'takeoffs' || k === 'landings';
     var d = document.createElement('div');
-    d.innerHTML = '<label>' + esc(COLS[k].label) + (isCount ? ' (回)' : '') + '</label><input class="dur" id="cf_' + k + '" value="' + (isCount ? st.carry_forward[k] : hm(st.carry_forward[k])) + '">';
+    d.innerHTML = '<label>' + esc(lbl(k)) + (isCount ? ' (回)' : '') + '</label><input class="dur" id="cf_' + k + '" value="' + (isCount ? st.carry_forward[k] : hm(st.carry_forward[k])) + '">';
     g.appendChild(d);
   });
 }
