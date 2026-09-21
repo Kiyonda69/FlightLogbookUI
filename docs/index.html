@@ -759,11 +759,16 @@ function editFlight(f) {
   S.editing = f.id;
   $('#formTitle').textContent = '編集: ' + f.date + ' ' + (f.flight_no || '');
   Object.keys(f).forEach(function (k) { if (F().elements[k]) fset(k, COLS[k] && COLS[k].kind === 'min' ? hm(f[k], true) : f[k]); });
-  fset('_night', hm(f.pic_night + f.sic_night, true));
   fset('_xc', (f.pic_xc || f.sic_xc) ? '1' : '0');
   fset('_split_pic', hm(f.pic, true));
-  fset('_actual', hm(blockOf(f.dep_time, f.arr_time) || f.block || f.sim, true));
-  var cc = parseCrewCode(f.crew);
+  // Allocated legs store fractions of the real times; invert the member's fraction sum so the
+  // "実時間" inputs show what was actually flown (e.g. 1:20 + 1:20 at 2/3 → 4:00).
+  var cc = parseCrewCode(f.crew), fracSum = 1;
+  if (cc && crewPattern(cc.patternId) && crewPattern(cc.patternId).alloc[cc.member]) {
+    fracSum = crewPattern(cc.patternId).alloc[cc.member].reduce(function (a, t) { return a + t[0] / t[1]; }, 0) || 1;
+  }
+  fset('_night', hm(Math.round((f.pic_night + f.sic_night) / fracSum), true));
+  fset('_actual', hm(blockOf(f.dep_time, f.arr_time) || Math.round(f.block / fracSum) || f.sim, true));
   if (cc && crewPattern(cc.patternId)) setRole(cc.patternId.charAt(0), cc.patternId, cc.member);
   else if (f.crew === 'SIM' || roleOf(f) === 'sim') setRole('sim');
   else if (f.crew === 'SPLIT' || roleOf(f) === 'split') setRole('split');
