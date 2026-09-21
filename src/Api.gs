@@ -139,7 +139,15 @@ function apiDeleteFlight(id) {
 
 /* ---------- Settings ---------- */
 
+var settingsCache_ = null; // per-execution cache (Apps Script starts a fresh VM per request)
+
 function getSettings_() {
+  if (settingsCache_) return settingsCache_;
+  settingsCache_ = readSettings_();
+  return settingsCache_;
+}
+
+function readSettings_() {
   var sh = ss_().getSheetByName(SHEET_SETTINGS);
   var out = {};
   Object.keys(SETTINGS_DEFAULTS).forEach(function (k) { out[k] = SETTINGS_DEFAULTS[k]; });
@@ -178,6 +186,7 @@ function apiSaveSettings(obj) {
       touchedTotals = true;
     });
   }
+  settingsCache_ = null;
   // Carry-forward, pilot name and licence number all appear on the year sheets → rebuild them all.
   if (touchedTotals || obj.pilot_name !== undefined || obj.licence_no !== undefined || obj.time_basis !== undefined) {
     refreshYearSheets_(null);

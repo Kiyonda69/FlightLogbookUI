@@ -58,21 +58,22 @@ function apiRebuildYearReport(year) {
   return rebuildYearSheet_(year, all);
 }
 
-/** Spreadsheet menu: rebuild every year sheet (e.g. after pasting new code). */
+/** Spreadsheet menu: full rebuild of every year sheet, including styles (e.g. after pasting new code). */
 function rebuildAllYearReports() {
   var all = sortFlights_(readAllFlights_());
-  var names = reportYears_(all, null).map(function (y) { return rebuildYearSheet_(y, all).sheetName; });
+  var names = reportYears_(all, null).map(function (y) { return rebuildYearSheet_(y, all, true).sheetName; });
   Logger.log('再生成: ' + names.join(', '));
   return names;
 }
 
 /**
  * Called after any write. Rebuilds the sheets of `fromYear` and all later years that have flights
- * or an existing sheet. `fromYear` null = every year. Returns the sheet names refreshed.
+ * or an existing sheet. `fromYear` null = every year. `force` = full rebuild with styles even when
+ * the layout is unchanged. Returns the sheet names refreshed.
  */
-function refreshYearSheets_(fromYear, allSorted) {
+function refreshYearSheets_(fromYear, allSorted, force) {
   var all = allSorted || sortFlights_(readAllFlights_());
-  return reportYears_(all, fromYear).map(function (y) { return rebuildYearSheet_(y, all).sheetName; });
+  return reportYears_(all, fromYear).map(function (y) { return rebuildYearSheet_(y, all, force).sheetName; });
 }
 
 /** Years (strings) that have flights or an existing year sheet, >= fromYear when given. */
@@ -88,7 +89,7 @@ function reportYears_(all, fromYear) {
 
 /* ---------- builder ---------- */
 
-function rebuildYearSheet_(year, all) {
+function rebuildYearSheet_(year, all, force) {
   var ss = ss_();
   var name = REPORT_PREFIX + year;
   var sh = ss.getSheetByName(name);
@@ -104,10 +105,18 @@ function rebuildYearSheet_(year, all) {
   var props = PropertiesService.getScriptProperties();
   var layoutKey = REPORT_LAYOUT_KEY + name;
   var layout = JSON.stringify({ v: REPORT_DESIGN_VERSION, starts: plan.blocks.map(function (b) { return b.start + ':' + b.nBody; }) });
-  var relayout = isNew || props.getProperty(layoutKey) !== layout;
+  var relayout = isNew || !!force || props.getProperty(layoutKey) !== layout;
+
+  if (!relayout) {
+    // Fast path (routine save): the block layout is unchanged, so number formats, styles, borders,
+    // merges, widths and heights are all still valid — only the values need rewriting.
+    sh.getRange(1, 1, nrows, REPORT_NCOL).setValues(plan.grid);
+    SpreadsheetApp.flush();
+    return { sheetName: name, url: ss.getUrl() + '#gid=' + sh.getSheetId(), count: plan.count, relayout: false };
+  }
 
   sh.clear();
-  if (relayout && !isNew) sh.getRange(1, 1, sh.getMaxRows(), REPORT_NCOL).breakApart();
+  if (!isNew) sh.getRange(1, 1, sh.getMaxRows(), REPORT_NCOL).breakApart();
 
   // Column number formats over the used rows — BEFORE writing values (text columns must be '@').
   sh.getRange(1, 1, nrows, 8).setNumberFormat('@');           // 月日..飛行内容 (incl. clocks)
@@ -138,29 +147,26 @@ function rebuildYearSheet_(year, all) {
   sh.getRangeList(plan.blocks.map(function (b) { return a1_(b.h2, 9, b.lastRow - b.h2 + 1, 1); }))
     .setBorder(null, null, null, true, null, null, REPORT_LINE, S.DOTTED);                 // 離陸 ┊ 着陸
 
-  // ----- structure that only changes with the layout -----
-  if (relayout) {
-    plan.blocks.forEach(function (b) {
-      var h1 = b.h1;
-      sh.getRange(h1, 1, 2, 8).mergeVertically();    // 月日..飛行内容
-      sh.getRange(h1, 9, 1, 2).merge();              // 離着陸回数
-      sh.getRange(h1, 11, 2, 1).mergeVertically();   // 飛行時間
-      sh.getRange(h1, 12, 1, 5).merge();             // 機長・単独・副機長…
-      sh.getRange(h1, 17, 1, 4).merge();             // 副操縦士または教官同乗教育…
-      sh.getRange(h1, 21, 1, 2).merge();             // 計器飛行時間
-      sh.getRange(h1, 23, 2, 5).mergeVertically();   // 模擬飛行装置..その他
-      sh.getRange(h1, 28, 1, 2).merge();             // 自由欄 (INST / blank below)
-      sh.getRange(b.totalRow, 1, 3, 7).merge();      // blank area left of the total labels
-      sh.setRowHeights(h1, 2, REPORT_HEADER_ROW_HEIGHT);
-    });
-    sh.setRowHeights(1, nrows, REPORT_ROW_HEIGHT);
-    plan.blocks.forEach(function (b) { sh.setRowHeights(b.h1, 2, REPORT_HEADER_ROW_HEIGHT); });
-    REPORT_COL_WIDTHS.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
-    sh.setFrozenRows(0);
-    props.setProperty(layoutKey, layout);
-  }
+  // ----- structure (merges, heights, widths) -----
+  plan.blocks.forEach(function (b) {
+    var h1 = b.h1;
+    sh.getRange(h1, 1, 2, 8).mergeVertically();    // 月日..飛行内容
+    sh.getRange(h1, 9, 1, 2).merge();              // 離着陸回数
+    sh.getRange(h1, 11, 2, 1).mergeVertically();   // 飛行時間
+    sh.getRange(h1, 12, 1, 5).merge();             // 機長・単独・副機長…
+    sh.getRange(h1, 17, 1, 4).merge();             // 副操縦士または教官同乗教育…
+    sh.getRange(h1, 21, 1, 2).merge();             // 計器飛行時間
+    sh.getRange(h1, 23, 2, 5).mergeVertically();   // 模擬飛行装置..その他
+    sh.getRange(h1, 28, 1, 2).merge();             // 自由欄 (INST / blank below)
+    sh.getRange(b.totalRow, 1, 3, 7).merge();      // blank area left of the total labels
+  });
+  sh.setRowHeights(1, nrows, REPORT_ROW_HEIGHT);
+  plan.blocks.forEach(function (b) { sh.setRowHeights(b.h1, 2, REPORT_HEADER_ROW_HEIGHT); });
+  REPORT_COL_WIDTHS.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  sh.setFrozenRows(0);
+  props.setProperty(layoutKey, layout);
   SpreadsheetApp.flush();
-  return { sheetName: name, url: ss.getUrl() + '#gid=' + sh.getSheetId(), count: plan.count };
+  return { sheetName: name, url: ss.getUrl() + '#gid=' + sh.getSheetId(), count: plan.count, relayout: true };
 }
 
 /**

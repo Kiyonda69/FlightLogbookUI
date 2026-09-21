@@ -102,7 +102,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
   - 合計 = 前項までの合計 + 項小計
 - **年次シート `飛行日誌_YYYY` は手動生成しない**。`apiAddFlight` / `apiUpdateFlight` / `apiDeleteFlight` / `apiImportCsv` / `apiSaveSettings` が `refreshYearSheets_(fromYear)` を呼び、対象年とそれ以降の年（前項までの合計が変わる）を再生成する。年の初レグでシートが新規作成される。UI に帳票タブは無い（設定タブにシート一覧の表示のみ）。書き込み API は `{ flight, refreshed: [sheetName...] }` を返す。
-- 再生成コストを抑える設計: 年全体を 1 回の `setValues`、書式・罫線は `RangeList` で 12 ブロックまとめて適用（年あたり呼び出し回数は固定）。結合セル・列幅・行高はレイアウト（各月ブロックの開始行と行数）または `REPORT_DESIGN_VERSION` が前回（Script Properties `report_layout_<sheet>`）と違うときだけ作り直す。
+- 再生成コストを抑える設計: レイアウト（各月ブロックの開始行と行数）と `REPORT_DESIGN_VERSION` が前回（Script Properties `report_layout_<sheet>`）と同じなら **値の `setValues` 1 回だけ**（書式・罫線・結合・列幅は残っているので触らない）。変わったとき、または `force`（メニューの「年次帳票をすべて再生成」と `repairFlightsSheetFormats`）のときだけ `clear` → 書式 → 値 → `RangeList` でスタイル・罫線 → 結合・行高・列幅、の完全再構築。`getSettings_` は実行内キャッシュ（`apiSaveSettings` で無効化）。実測: 完全再構築 約 12 秒/年、値のみ 約 2〜3 秒/年（見込み）。
 - 帳票デザインは Numbers 原本のスクリーンショットに合わせてある（`Report.gs` 冒頭コメント参照）: 細い格子 + 中太の外枠、ヘッダー下と合計行上の中太線、グループ境界（I, K, L, Q, U, W, Z, AB 列の左）の中太縦線、離陸|着陸 間の点線、1 行おきの薄い縞（合計行まで連続）、合計 3 行の左側 A..G を 1 セルに結合、ヘッダー「月日／＿＿年」「航空機／の型式」「自由欄／INST」、全セル中央揃え・通常ウェイト・Noto Sans JP 10pt、列幅は `REPORT_COL_WIDTHS`。Numbers の数式由来の `0:00` 埋めは再現しない。見た目を変えたら `REPORT_DESIGN_VERSION` を上げる。
 - 重複判定キー（CSV 取込）: `date | dep_time | flight_no | registration`。
 - 帳票に文字列らしき値（月日 `"5.30"`、時刻 `"23:40"`）を書くときは **`setNumberFormat('@')` を `setValues` より先に**呼ぶ。後から書式を付けても Sheets は書き込み時点で `5.3` に変換してしまう（実際に起きた不具合）。`dev/mock_gas.js` はこの自動変換を模擬するので、テストで検出できる。

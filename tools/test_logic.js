@@ -76,7 +76,7 @@ advt._row = ctx.readAllFlights_().filter(function (f) { return f.flight_no === '
 fsh.rows[advt._row - 1][ctx.colIndex_('remarks')] = 0.0625;
 check('corrupted day-fraction remark read back as text', ctx.apiGetMonth('2017-08').flights.filter(function (f) { return f.flight_no === 'ADVT'; })[0].remarks, '1:30');
 fsh.rows[advt._row - 1][ctx.colIndex_('remarks')] = new Date(1899, 11, 30, 3, 0);
-check('corrupted Date remark read back as text', ctx.apiGetMonth('2017-08').flights.filter(function (f) { return f.flight_no === 'ADVT'; })[0].remarks, '03:00');
+check('corrupted Date remark read back as text', ctx.apiGetMonth('2017-08').flights.filter(function (f) { return f.flight_no === 'ADVT'; })[0].remarks, '3:00');
 check('repairFlightsSheetFormats rewrites all rows', ctx.repairFlightsSheetFormats(), 860);
 check('repair leaves text cells as strings', typeof fsh.rows[advt._row - 1][ctx.colIndex_('remarks')], 'string');
 check('cumulative unchanged after repair', ctx.apiBootstrap().cumulative, expected);
@@ -148,9 +148,21 @@ var styles = ysheet.borderCalls.map(function (b) { return b[b.length - 1]; });
 check('medium borders applied', styles.filter(function (s) { return s === 'SOLID_MEDIUM'; }).length, 12 * (1 + 1 + 1 + 8));
 check('dotted 離陸|着陸 border applied per block', styles.filter(function (s) { return s === 'DOTTED'; }).length, 12);
 check('dotted border sits on column I right edge', ysheet.borderCalls.filter(function (b) { return b[b.length - 1] === 'DOTTED'; }).every(function (b) { return b[1] === 9 && b[3] === 1 && b[7] === true; }), true);
-var mergesBefore = ysheet.merges.length;
-ctx.apiRebuildYearReport('2024');
+var mergesBefore = ysheet.merges.length, bordersBefore = ysheet.borderCalls.length;
+var fast = ctx.apiRebuildYearReport('2024');
+check('unchanged layout: fast path (values only)', fast.relayout, false);
 check('unchanged layout: merges not rebuilt', ysheet.merges.length, mergesBefore);
+check('unchanged layout: no border calls', ysheet.borderCalls.length, bordersBefore);
+check('unchanged layout: values still correct', Math.round(ysheet.rows.filter(function (r) { return r[7] === '合  計'; })[11][10] * 1440), expected.block);
+var forced = ctx.rebuildYearSheet_('2024', ctx.sortFlights_(ctx.readAllFlights_()), true);
+check('forced rebuild takes the full path', forced.relayout, true);
+check('forced rebuild: merges rebuilt once (breakApart + merge)', ysheet.merges.length, mergesBefore);
+check('forced rebuild: design borders reapplied', ysheet.borderCalls.filter(function (b) { return b[b.length - 1] === 'DOTTED'; }).length, 12);
+check('menu rebuild returns all year sheets', ctx.rebuildAllYearReports().length >= 8, true);
+// settings cache: a settings change must be visible within the same execution
+ctx.apiSaveSettings({ pilot_name: 'キャッシュ確認' });
+check('settings cache invalidated on save', ctx.getSettings_().pilot_name, 'キャッシュ確認');
+ctx.apiSaveSettings({ pilot_name: '' });
 var badYear = null; try { ctx.apiRebuildYearReport('24'); } catch (e) { badYear = e.message; }
 check('rebuild rejects bad year', /年の指定/.test(badYear || ''), true);
 check('apiListReports newest first', ctx.apiListReports()[0], '飛行日誌_2025');

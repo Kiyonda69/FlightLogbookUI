@@ -62,7 +62,7 @@ function nowIso_() { return new Date().toISOString(); }
  */
 function cellText_(v) {
   if (v === null || v === undefined) return '';
-  if (v instanceof Date) return pad2_(v.getHours()) + ':' + pad2_(v.getMinutes());
+  if (v instanceof Date) return fmtMinutes_(v.getHours() * 60 + v.getMinutes());
   if (typeof v === 'number' && v > 0 && v < 1) return fmtMinutes_(Math.round(v * 1440));
   return String(v);
 }

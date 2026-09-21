@@ -75,7 +75,7 @@ function repairFlightsSheetFormats() {
     sh.getRange(2, colIndex_('date') + 1, sh.getMaxRows() - 1, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
     sh.getRange(2, colIndex_('remarks') + 1, sh.getMaxRows() - 1, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');
     flights.forEach(function (f) { writeFlightRows_(sh, f._row, [flightToRow_(f)]); });
-    refreshYearSheets_(null, sortFlights_(flights));
+    refreshYearSheets_(null, sortFlights_(flights), true);
   } finally { lock.releaseLock(); }
   Logger.log('Flights シートを修復しました: ' + flights.length + ' 行');
   return flights.length;
