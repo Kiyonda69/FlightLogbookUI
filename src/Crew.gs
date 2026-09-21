@@ -12,7 +12,7 @@ function loadCrewRules_() {
   if (crewRulesCache_) return crewRulesCache_;
   var src = HtmlService.createHtmlOutputFromFile('CrewRules').getContent().replace(/<\/?script[^>]*>/g, '');
   crewRulesCache_ = new Function(src +
-    '\nreturn { CREW_PATTERNS: CREW_PATTERNS, CREW_DUTIES: CREW_DUTIES, CREW_KINDS: CREW_KINDS, ' +
+    '\nreturn { CREW_PATTERNS: CREW_PATTERNS, CREW_DUTIES: CREW_DUTIES, CREW_KINDS: CREW_KINDS, CREW_DEFAULT_PATTERN: CREW_DEFAULT_PATTERN, ' +
     'allocateCrew: allocateCrew, crewPattern: crewPattern, crewFormula: crewFormula, parseCrewCode: parseCrewCode };')();
   return crewRulesCache_;
 }

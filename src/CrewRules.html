@@ -15,7 +15,7 @@
  *  - 野外飛行 / 夜間飛行 are allocated with the same fractions.
  *  - Duty → JCAB column: CA / CKC / RAL → 機長 (9項), SIC → 単独・副機長 (10項), PUS → 機長見習業務 (11項),
  *    CO → 副操縦士 (14項). 野外/夜間 of CA/CKC/RAL/SIC/PUS → 12/13項 (機長側), of CO → 16/17項 (副操縦士側).
- *  - ダブル編成 Pattern 7 / 8 are not included (cut off in the reference material).
+ *  - ダブル編成 Pattern 7 / 8 (CA/CA/CA/PUS, CA/CA/CO/PUS) come from the second screenshot of the same table.
  */
 var CREW_DUTIES = {
   CA: '機長 (CA)', CKC: '機長 (CKC)', RAL: '機長 (RAL)', SIC: '単独・副機長 (SIC DUTY)', CO: '副操縦士 (CO)', PUS: '機長見習 (PUS)'
@@ -41,14 +41,18 @@ var CREW_PATTERNS = [
   { id: 'M9',  kind: 'M', crew: ['CKC', 'RAL', 'CO'],  alloc: [[T_(2, 3, 'CKC'), T_(1, 3, 'CA')], [T_(1, 3, 'RAL'), T_(1, 3, 'SIC')], [T_(2, 3, 'CO')]] },
   { id: 'M10', kind: 'M', crew: ['CA', 'CA', 'PUS'],   alloc: [[T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(2, 3, 'PUS')]] },
   { id: 'M11', kind: 'M', crew: ['CA', 'SIC', 'PUS'],  alloc: [[T_(2, 3, 'CA')], [T_(1, 3, 'SIC'), T_(1, 3, 'CO')], [T_(2, 3, 'PUS')]] },
-  // ---- ダブル編成 (4名) Pattern.1 - 6 (7, 8 は資料未確認) ----
+  // ---- ダブル編成 (4名) Pattern.1 - 8 ----
   { id: 'D1', kind: 'D', crew: ['CA', 'CA', 'CA', 'CA'],   alloc: [[T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')]] },
   { id: 'D2', kind: 'D', crew: ['CA', 'CA', 'CA', 'CO'],   alloc: [[T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CO')]] },
   { id: 'D3', kind: 'D', crew: ['CA', 'CA', 'CO', 'CO'],   alloc: [[T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')], [T_(1, 2, 'CO')]] },
   { id: 'D4', kind: 'D', crew: ['CKC', 'CA', 'CA', 'CO'],  alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] },
   { id: 'D5', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CA'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')]] },
-  { id: 'D6', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CO'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] }
+  { id: 'D6', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CO'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] },
+  { id: 'D7', kind: 'D', crew: ['CA', 'CA', 'CA', 'PUS'],  alloc: [[T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'PUS')]] },
+  { id: 'D8', kind: 'D', crew: ['CA', 'CA', 'CO', 'PUS'],  alloc: [[T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')], [T_(1, 2, 'PUS')]] }
 ];
+/** Pattern pre-selected when the user switches 編成 in the entry form (most common line-flying crews). */
+var CREW_DEFAULT_PATTERN = { N: 'N1', M: 'M2', D: 'D3' };
 
 /** JCAB column for a duty code and which side (pic / sic) its 野外・夜間 go to. */
 var CREW_DUTY_COLUMN = { CA: 'pic', CKC: 'pic', RAL: 'pic', SIC: 'solo_sic', PUS: 'pus', CO: 'sic' };

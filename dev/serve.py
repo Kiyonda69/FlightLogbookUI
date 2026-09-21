@@ -52,7 +52,8 @@ window.google = { script: { run: null } };
 
 def build_index():
     html = (SRC / "Index.html").read_text(encoding="utf-8")
-    scripts = "\n".join('<script src="/src/%s"></script>' % f for f in GS_ORDER)
+    # ?v=<mtime> so the browser never reuses a cached copy of an edited .gs file
+    scripts = "\n".join('<script src="/src/%s?v=%d"></script>' % (f, int((SRC / f).stat().st_mtime)) for f in GS_ORDER)
     html = html.replace("<?!= include('Script'); ?>", (SHIM % scripts) + (SRC / "Script.html").read_text(encoding="utf-8"))
     # any other <?!= include('X'); ?> → contents of src/X.html (Style, CrewRules, ...)
     html = re.sub(r"<\?!= include\('(\w+)'\); \?>", lambda m: (SRC / (m.group(1) + ".html")).read_text(encoding="utf-8"), html)
@@ -84,6 +85,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 8765))
     print("serving http://localhost:%d/  (root=%s)" % (port, ROOT))
     http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

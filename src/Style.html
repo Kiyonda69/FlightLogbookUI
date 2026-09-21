@@ -29,6 +29,13 @@
   input:focus, select:focus { outline: 2px solid #c2dbff; border-color: var(--accent); }
   input.mono { font-family: "SF Mono", Consolas, monospace; text-transform: uppercase; }
   input.dur { font-family: "SF Mono", Consolas, monospace; text-align: right; }
+  input.upper { text-transform: uppercase; }
+  label.chk { display: flex; align-items: center; gap: 6px; height: 34px; font-size: 13px; color: var(--ink); overflow: visible; cursor: pointer; }
+  label.chk input { width: 16px; height: 16px; margin: 0; }
+  .tag.qpr { background: #fde293; color: #3c4043; }
+  .card.pending { border-color: #f0d78c; background: #fffdf5; }
+  .card.pending h2 .tag { background: var(--warn); color: #fff; margin-left: 6px; }
+  header .stats b.pend { color: #fdd663; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #cfd4da; background: #fff; cursor: pointer; font-size: 14px; }
   .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }

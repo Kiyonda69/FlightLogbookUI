@@ -29,7 +29,7 @@ function parseClock_(v) {
   if (v === null || v === undefined || v === '') return '';
   if (v instanceof Date) return pad2_(v.getHours()) + ':' + pad2_(v.getMinutes());
   var s = String(v).trim();
-  var m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  var m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/) || s.match(/^(\d{1,2})(\d{2})$/); // "07:45" or "0745" / "745"
   if (!m) throw new Error('時刻の形式が不正です (HH:MM): ' + s);
   var h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
   if (h > 23 || mi > 59) throw new Error('時刻の値が不正です: ' + s);
@@ -106,10 +106,11 @@ function normalizeFlight_(input) {
   f.registration = String(f.registration || '').trim().toUpperCase();
   f.dep = String(f.dep || '').trim().toUpperCase();
   f.arr = String(f.arr || '').trim().toUpperCase();
-  f.flight_no = String(f.flight_no || '').trim();
+  f.flight_no = String(f.flight_no || '').trim().toUpperCase(); // 便名は大文字固定 (jl10 → JL10)
   f.remarks = String(f.remarks || '').trim();
   f.crew = String(f.crew || '').trim().toUpperCase();
   if (f.crew && !/^([NMD]\d+\/\d+|SPLIT|SIM)$/.test(f.crew)) throw new Error('編成コードの形式が不正です: ' + f.crew);
+  f.qpr = (f.qpr === true || f.qpr === 1 || /^(1|true|yes|y|qpr|○|〇|✓)$/i.test(String(f.qpr === undefined || f.qpr === null ? '' : f.qpr).trim())) ? '1' : '';
   f.dep_time = parseClock_(f.dep_time);
   f.arr_time = parseClock_(f.arr_time);
   f.takeoffs = Number(f.takeoffs) || 0;

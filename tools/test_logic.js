@@ -29,6 +29,9 @@ check('fmtMinutes 772533', ctx.fmtMinutes_(772533), '12875:33');
 check('block wraps midnight', ctx.blockMinutes_('23:38', '00:39'), 61);
 check('block same day', ctx.blockMinutes_('01:31', '02:44'), 73);
 check('parseDateStr', ctx.parseDateStr_('2024/6/3'), '2024-06-03');
+check('parseClock "0745" → 07:45', ctx.parseClock_('0745'), '07:45');
+check('parseClock "745" → 07:45', ctx.parseClock_('745'), '07:45');
+check('parseClock "2360" rejected', (function () { try { ctx.parseClock_('2360'); return null; } catch (e) { return /不正/.test(e.message); } })(), true);
 
 // --- setup + import
 check('setupSpreadsheet', ctx.setupSpreadsheet(), 'OK');
@@ -209,7 +212,7 @@ check('cumulative still correct', ctx.apiBootstrap().cumulative, expected);
 
 // --- crew allocation rules (CrewRules.html shared with the UI), examples from the JAL document
 var CR = ctx.loadCrewRules_();
-check('crew rules: 3 normal + 11 multi + 6 double patterns', CR.CREW_PATTERNS.length, 3 + 11 + 6);
+check('crew rules: 3 normal + 11 multi + 8 double patterns', CR.CREW_PATTERNS.length, 3 + 11 + 8);
 var a = CR.allocateCrew('M2', 0, 499, 499, 120);           // CA DUTY in CA/CA/CO: 1/2CA + 1/6CO, block 8:19
 check('M2 CA: 機長 = round(499/2) = 250', a.pic, 250);
 check('M2 CA: 副操縦士 = round(499/6) = 83', a.sic, 83);
@@ -233,7 +236,14 @@ check('every pattern: crew length == alloc length', CR.CREW_PATTERNS.every(funct
 check('every duty code known', CR.CREW_PATTERNS.every(function (p) { return p.alloc.every(function (m) { return m.every(function (t) { return CR.CREW_DUTIES[t[2]]; }); }); }), true);
 check('parseCrewCode', CR.parseCrewCode('M2/0'), { patternId: 'M2', member: 0 });
 check('parseCrewCode rejects garbage', CR.parseCrewCode('SPLIT'), null);
-var badP = null; try { CR.allocateCrew('D7', 0, 100, 0, 0); } catch (e) { badP = e.message; }
+// ダブル Pattern 7 / 8 (second screenshot): CA/CA/CA/PUS and CA/CA/CO/PUS
+check('D7 CA: 1/3CA + 1/6CO', (function (r) { return [r.pic, r.sic, r.block]; })(CR.allocateCrew('D7', 0, 600, 600, 60)), [200, 100, 300]);
+check('D7 PUS: 1/2PUS', (function (r) { return [r.pus, r.block, r.pic_xc]; })(CR.allocateCrew('D7', 3, 600, 600, 0)), [300, 300, 300]);
+check('D8 CO: 1/2CO', (function (r) { return [r.sic, r.sic_night, r.block]; })(CR.allocateCrew('D8', 2, 600, 600, 60)), [300, 30, 300]);
+check('D8 crew list', CR.crewPattern('D8').crew, ['CA', 'CA', 'CO', 'PUS']);
+check('D7 / D8: fractions of the 4 members sum to 2 (two seats occupied at any time)', ['D7', 'D8'].map(function (id) { var sum = 0; CR.crewPattern(id).alloc.forEach(function (m) { m.forEach(function (t) { sum += t[0] / t[1]; }); }); return sum; }), [2, 2]);
+check('default patterns exist', [CR.CREW_DEFAULT_PATTERN.M, CR.CREW_DEFAULT_PATTERN.D, CR.crewPattern('M2').crew, CR.crewPattern('D3').crew], ['M2', 'D3', ['CA', 'CA', 'CO'], ['CA', 'CA', 'CO', 'CO']]);
+var badP = null; try { CR.allocateCrew('D9', 0, 100, 0, 0); } catch (e) { badP = e.message; }
 check('unknown pattern rejected', /未知の編成パターン/.test(badP || ''), true);
 check('apiCrewPatterns lists formulas', ctx.apiCrewPatterns().patterns.filter(function (p) { return p.id === 'M2'; })[0].formulas, ['1/2CA + 1/6CO', '1/2CA + 1/6CO', '2/3CO']);
 check('apiAllocateCrew accepts H:MM', ctx.apiAllocateCrew('M2', 0, '8:19', '8:19', '2:00').block, 333);
@@ -242,15 +252,64 @@ check('apiAllocateCrew accepts H:MM', ctx.apiAllocateCrew('M2', 0, '8:19', '8:19
 var cr = ctx.apiAddFlight({ date: '2025-03-01', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'KLAX', dep_time: '23:40', arr_time: '08:55',
   flight_no: 'JL62', takeoffs: 1, landings: 1, block: 333, pic: 250, sic: 83, pic_xc: 250, sic_xc: 83, crew: 'm2/0' });
 check('crew code stored upper-case', cr.flight.crew, 'M2/0');
+check('flight_no stored upper-case', ctx.apiAddFlight({ date: '2025-03-05', aircraft_type: 'B77W', registration: 'JA742J', dep: 'KLAX', arr: 'RJTT', dep_time: '20:00', arr_time: '06:00', flight_no: 'jl61', pic: 600, block: 600 }).flight.flight_no, 'JL61');
 check('crew code read back', ctx.apiGetMonth('2025-03').flights[0].crew, 'M2/0');
 var badCrew = null; try { ctx.apiAddFlight({ date: '2025-03-02', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'RJOO', dep_time: '01:00', arr_time: '02:00', pic: 60, crew: 'X9' }); } catch (e) { badCrew = e.message; }
 check('bad crew code rejected', /編成コード/.test(badCrew || ''), true);
 ctx.apiDeleteFlight(cr.flight.id);
+ctx.apiGetMonth('2025-03').flights.forEach(function (f) { ctx.apiDeleteFlight(f.id); });
+
+// --- batch save (queue from localStorage → one request): adds + update, atomic validation
+var before = ctx.apiBootstrap().cumulative;
+var leg = function (d, fn, dep, arr) { return { date: d, aircraft_type: 'B77W', registration: 'JA742J', dep: dep, arr: arr, dep_time: '01:00', arr_time: '03:00', flight_no: fn, takeoffs: 1, landings: 1, block: 120, pic: 120, pic_xc: 120, crew: 'N1/0' }; };
+var batch = ctx.apiSaveFlights([leg('2025-04-01', 'jl1', 'RJTT', 'KSFO'), leg('2025-04-02', 'JL2', 'KSFO', 'RJTT'), leg('2024-12-30', 'JL3', 'RJTT', 'RJOO')]);
+check('batch: 3 added, 0 updated', [batch.added, batch.updated, batch.flights.length], [3, 0, 3]);
+check('batch: ids assigned + flight_no upper-cased', batch.flights.every(function (f) { return f.id; }) && batch.flights[0].flight_no === 'JL1', true);
+check('batch: year sheets refreshed from the earliest year (2024, 2025)', batch.refreshed, ['飛行日誌_2024', '飛行日誌_2025']);
+check('batch: cumulative block +6:00', ctx.apiBootstrap().cumulative.block - before.block, 360);
+check('batch: rows readable', ctx.apiGetMonth('2025-04').flights.map(function (f) { return f.flight_no; }), ['JL1', 'JL2']);
+var upd = JSON.parse(JSON.stringify(batch.flights[0])); upd.block = 180; upd.pic = 180; upd.pic_xc = 180; upd.arr_time = '04:00';
+var batch2 = ctx.apiSaveFlights([upd, leg('2025-04-03', 'JL4', 'RJTT', 'RJCC')]);
+check('batch: 1 added + 1 updated', [batch2.added, batch2.updated], [1, 1]);
+check('batch: update kept id / created_at, changed block', (function (f) { return [f.id === upd.id, f.created_at === batch.flights[0].created_at, f.block]; })(ctx.apiGetMonth('2025-04').flights[0]), [true, true, 180]);
+check('batch: cumulative block +6:00 +1:00 +2:00', ctx.apiBootstrap().cumulative.block - before.block, 540);
+var badBatch = null; try { ctx.apiSaveFlights([leg('2025-04-05', 'JL5', 'RJTT', 'RJOO'), { date: 'bad', crew: 'X' }]); } catch (e) { badBatch = e.message; }
+check('batch: one bad leg → nothing written, error names the item', [/2 件目/.test(badBatch || ''), ctx.apiGetMonth('2025-04').flights.length], [true, 3]);
+var badId = null; try { ctx.apiSaveFlights([{ id: 'nope', date: '2025-04-05', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'RJOO', block: 60, pic: 60 }]); } catch (e) { badId = e.message; }
+check('batch: unknown id rejected', /該当レコード/.test(badId || ''), true);
+var emptyBatch = null; try { ctx.apiSaveFlights([]); } catch (e) { emptyBatch = e.message; }
+check('batch: empty rejected', /保存するレグ/.test(emptyBatch || ''), true);
+ctx.apiGetMonth('2025-04').flights.concat(ctx.apiGetMonth('2024-12').flights.filter(function (f) { return f.flight_no === 'JL3'; })).forEach(function (f) { ctx.apiDeleteFlight(f.id); });
+check('batch: cleanup restores cumulative', ctx.apiBootstrap().cumulative, before);
+
+// --- QPR flag → Flights column, qualification panel, checklist sheet rows 29-36
+var qprLeg = function (d, fn, qpr) { return { date: d, aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'KLAX', dep_time: '01:00', arr_time: '10:00', flight_no: fn, takeoffs: 1, landings: 1, block: 540, pic: 540, pic_xc: 540, crew: 'N1/0', qpr: qpr }; };
+var q1 = ctx.apiAddFlight(qprLeg('2025-05-03', 'JL62', true)).flight;
+var q2 = ctx.apiAddFlight(qprLeg('2025-11-20', 'JL16', '1')).flight;
+var q3 = ctx.apiAddFlight(qprLeg('2026-04-02', 'JL10', 'yes')).flight;
+var q4 = ctx.apiAddFlight(qprLeg('2025-06-01', 'JL7', '')).flight;
+check('qpr: true / "1" / "yes" stored as "1", blank stays blank', [q1.qpr, q2.qpr, q3.qpr, q4.qpr], ['1', '1', '1', '']);
+check('qpr: read back from the sheet', ctx.apiGetMonth('2025-05').flights[0].qpr, '1');
+var qq = ctx.apiQualification('2025-12-01').qpr;
+check('qpr: FY2025 count 2, last = 2025-11-20 JL16', [qq.fy, qq.count, qq.last.date, qq.last.flight_no, qq.status], [2025, 2, '2025-11-20', 'JL16', 'ok']);
+check('qpr: FY2024 none → warn', ctx.apiQualification('2025-03-31').qpr.status, 'warn');
+var qsh = ctx.__mockSpreadsheet.getSheetByName(ctx.QUAL_SHEET);
+check('qual sheet: QPR block title (row 29)', qsh.rows[28][0].indexOf('QPR 実施フライト') === 0, true);
+check('qual sheet: 前回 QPR (row 31) = latest flagged leg', [qsh.rows[30][0], qsh.rows[30][1], qsh.rows[30][2]], ['前回 QPR', '2026年 4月 2日', '2026/04/02 JL10 RJTT-KLAX']);
+var fyRows = {}; for (var qi = 0; qi < 5; qi++) fyRows[qsh.rows[31 + qi][0]] = [qsh.rows[31 + qi][1], qsh.rows[31 + qi][2]];
+check('qual sheet: 2025年度 row lists both QPR legs', fyRows['2025年度'], ['2 回', '2025/05/03 JL62 RJTT-KLAX、 2025/11/20 JL16 RJTT-KLAX']);
+check('qual sheet: 2026年度 row lists one', fyRows['2026年度'], ['1 回', '2026/04/02 JL10 RJTT-KLAX']);
+check('qual sheet: QPR rows keep the C..J merge on the fast path', qsh.merges.length, 2 + 4 + 8 + 1 + 7);
+[q1, q2, q3, q4].forEach(function (f) { ctx.apiDeleteFlight(f.id); });
+check('qpr: cleanup', ctx.apiBootstrap().cumulative, before);
 // header migration: a sheet created before the crew column gets the header appended
 var fl = ctx.__mockSpreadsheet.getSheetByName('Flights');
 fl.rows[0] = fl.rows[0].slice(0, fl.rows[0].length - 1);
 check('ensureFlightsHeader_ appends missing header', ctx.ensureFlightsHeader_(fl), 1);
-check('header complete again', fl.rows[0][fl.rows[0].length - 1], 'crew');
+check('header complete again', fl.rows[0][fl.rows[0].length - 1], 'qpr');
+fl.rows[0] = fl.rows[0].slice(0, fl.rows[0].length - 1);
+ctx.apiBootstrap();
+check('readAllFlights_ self-heals a missing trailing header', fl.rows[0][fl.rows[0].length - 1], 'qpr');
 
 // --- 資格要件 (qualification) from the logbook, evaluated at a fixed "today"
 var q = ctx.apiQualification('2024-11-15');
@@ -284,7 +343,7 @@ var fy0 = (function () { var d = new Date(); return (d.getMonth() + 1 >= 4 ? d.g
 check('qual sheet: fiscal-year rows labelled FY-1..FY+3', [qs.rows[5][0], qs.rows[9][0]], [fy0 + '年度\n実施日', (fy0 + 4) + '年度\n実施日']);
 check('qual sheet: 63歳 rows 8-10 fixed "－"', [qs.rows[7][7], qs.rows[8][7], qs.rows[9][7]], ['－', '－', '－']);
 check('qual sheet: notes block', [qs.rows[16][0], qs.rows[17][1], qs.rows[26][0]], ['CACK', '技能基準月と同月', '特定操縦技能\n審査/確認']);
-check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows, A19:A20)', qs.merges.length, 2 + 4 + 8 + 1);
+check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows, A19:A20, 7 QPR rows)', qs.merges.length, 2 + 4 + 8 + 1 + 7);
 check('qual sheet: column widths set', Object.keys(qs.colWidths).length, 10);
 var qMerges = qs.merges.length, qBorders = qs.borderCalls.length;
 ctx.apiSaveSettings({ department: '777運航乗員部', employee_no: '123456', exp_english: '2027-03-31, 2030-01-01', dates_route: '2024-06-01', exp_pe: '2026-12-15', dates_pe: '2026-06-10' });

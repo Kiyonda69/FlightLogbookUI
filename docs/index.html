@@ -35,6 +35,13 @@
   input:focus, select:focus { outline: 2px solid #c2dbff; border-color: var(--accent); }
   input.mono { font-family: "SF Mono", Consolas, monospace; text-transform: uppercase; }
   input.dur { font-family: "SF Mono", Consolas, monospace; text-align: right; }
+  input.upper { text-transform: uppercase; }
+  label.chk { display: flex; align-items: center; gap: 6px; height: 34px; font-size: 13px; color: var(--ink); overflow: visible; cursor: pointer; }
+  label.chk input { width: 16px; height: 16px; margin: 0; }
+  .tag.qpr { background: #fde293; color: #3c4043; }
+  .card.pending { border-color: #f0d78c; background: #fffdf5; }
+  .card.pending h2 .tag { background: var(--warn); color: #fff; margin-left: 6px; }
+  header .stats b.pend { color: #fdd663; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #cfd4da; background: #fff; cursor: pointer; font-size: 14px; }
   .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
@@ -128,7 +135,7 @@
       <div><label>到着地 (ICAO)</label><input class="mono" name="arr" list="dlApts" maxlength="4" required></div>
       <div><label>出発時刻 <span id="tzLabel">UTC</span></label><input class="dur" name="dep_time" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div>
       <div><label>到着時刻 <span class="tz">UTC</span></label><input class="dur" name="arr_time" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div>
-      <div><label>飛行内容 (便名等)</label><input name="flight_no" placeholder="JL10"></div>
+      <div><label>飛行内容 (便名等)</label><input name="flight_no" class="upper" placeholder="JL10"></div>
       <div><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
       <div><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
       <div><label>ブロックタイム OUT→IN (自動)</label><input class="dur" name="_actual" placeholder="H:MM"></div>
@@ -157,6 +164,7 @@
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
       <div><label>記入する飛行時間</label><input class="dur" name="block" placeholder="H:MM"></div>
+      <div><label>QPR</label><label class="chk" title="チェックすると資格要件チェックリスト シートの QPR 欄（年度別）に反映されます"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
     </div>
 
     <details>
@@ -165,12 +173,25 @@
     </details>
 
     <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="btnSave">保存</button>
+      <button class="btn primary" id="btnQueue" type="button" title="この端末に一時保存し、あとで「まとめて保存」で 1 回の通信で書き込みます">キューに追加</button>
+      <button class="btn" id="btnSave" type="button" title="このレグだけを今すぐスプレッドシートに書き込みます（数秒かかります）">今すぐ保存</button>
       <button class="btn" id="btnReset" type="button">クリア</button>
       <button class="btn" id="btnCopyReturn" type="button" title="今の内容から復路を作る">復路を作成</button>
       <span class="hint" id="formStatus"></span>
     </div>
+    <p class="hint" style="margin:8px 0 0">「キューに追加」は通信せずにこの端末（ブラウザ）へ一時保存します。複数レグを入力したら下の「まとめて保存」で一括書き込み（年次シートの更新も 1 回で済みます）。</p>
   </form>
+
+  <div class="card pending" id="pendingCard" style="display:none">
+    <h2>未保存レグ <span class="tag" id="pendingCount"></span></h2>
+    <p class="hint">この端末のブラウザに一時保存されているレグです。スプレッドシートにはまだ書き込まれていません（ページを閉じても残ります）。</p>
+    <div class="scroll"><table id="pendingTable"></table></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="btnSaveAll">まとめて保存</button>
+      <button class="btn danger" id="btnClearPending">すべて破棄</button>
+      <span class="hint" id="pendingStatus"></span>
+    </div>
+  </div>
 
   <div class="card">
     <h2>最近の記録</h2>
@@ -276,7 +297,7 @@
  *  - 野外飛行 / 夜間飛行 are allocated with the same fractions.
  *  - Duty → JCAB column: CA / CKC / RAL → 機長 (9項), SIC → 単独・副機長 (10項), PUS → 機長見習業務 (11項),
  *    CO → 副操縦士 (14項). 野外/夜間 of CA/CKC/RAL/SIC/PUS → 12/13項 (機長側), of CO → 16/17項 (副操縦士側).
- *  - ダブル編成 Pattern 7 / 8 are not included (cut off in the reference material).
+ *  - ダブル編成 Pattern 7 / 8 (CA/CA/CA/PUS, CA/CA/CO/PUS) come from the second screenshot of the same table.
  */
 var CREW_DUTIES = {
   CA: '機長 (CA)', CKC: '機長 (CKC)', RAL: '機長 (RAL)', SIC: '単独・副機長 (SIC DUTY)', CO: '副操縦士 (CO)', PUS: '機長見習 (PUS)'
@@ -302,14 +323,18 @@ var CREW_PATTERNS = [
   { id: 'M9',  kind: 'M', crew: ['CKC', 'RAL', 'CO'],  alloc: [[T_(2, 3, 'CKC'), T_(1, 3, 'CA')], [T_(1, 3, 'RAL'), T_(1, 3, 'SIC')], [T_(2, 3, 'CO')]] },
   { id: 'M10', kind: 'M', crew: ['CA', 'CA', 'PUS'],   alloc: [[T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CA'), T_(1, 6, 'CO')], [T_(2, 3, 'PUS')]] },
   { id: 'M11', kind: 'M', crew: ['CA', 'SIC', 'PUS'],  alloc: [[T_(2, 3, 'CA')], [T_(1, 3, 'SIC'), T_(1, 3, 'CO')], [T_(2, 3, 'PUS')]] },
-  // ---- ダブル編成 (4名) Pattern.1 - 6 (7, 8 は資料未確認) ----
+  // ---- ダブル編成 (4名) Pattern.1 - 8 ----
   { id: 'D1', kind: 'D', crew: ['CA', 'CA', 'CA', 'CA'],   alloc: [[T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')]] },
   { id: 'D2', kind: 'D', crew: ['CA', 'CA', 'CA', 'CO'],   alloc: [[T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'CO')]] },
   { id: 'D3', kind: 'D', crew: ['CA', 'CA', 'CO', 'CO'],   alloc: [[T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')], [T_(1, 2, 'CO')]] },
   { id: 'D4', kind: 'D', crew: ['CKC', 'CA', 'CA', 'CO'],  alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] },
   { id: 'D5', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CA'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')], [T_(1, 4, 'CA'), T_(1, 4, 'CO')]] },
-  { id: 'D6', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CO'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] }
+  { id: 'D6', kind: 'D', crew: ['CKC', 'RAL', 'CA', 'CO'], alloc: [[T_(1, 2, 'CKC')], [T_(1, 2, 'RAL')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')]] },
+  { id: 'D7', kind: 'D', crew: ['CA', 'CA', 'CA', 'PUS'],  alloc: [[T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 3, 'CA'), T_(1, 6, 'CO')], [T_(1, 2, 'PUS')]] },
+  { id: 'D8', kind: 'D', crew: ['CA', 'CA', 'CO', 'PUS'],  alloc: [[T_(1, 2, 'CA')], [T_(1, 2, 'CA')], [T_(1, 2, 'CO')], [T_(1, 2, 'PUS')]] }
 ];
+/** Pattern pre-selected when the user switches 編成 in the entry form (most common line-flying crews). */
+var CREW_DEFAULT_PATTERN = { N: 'N1', M: 'M2', D: 'D3' };
 
 /** JCAB column for a duty code and which side (pic / sic) its 野外・夜間 go to. */
 var CREW_DUTY_COLUMN = { CA: 'pic', CKC: 'pic', RAL: 'pic', SIC: 'solo_sic', PUS: 'pus', CO: 'sic' };
@@ -466,7 +491,8 @@ var LOGBOOK_DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbzuF7S9lW
 </script>
 <script>
 /* ---------- state ---------- */
-var S = { boot: null, role: 'N', pattern: 'N1', member: 0, editing: null, listMonth: null };
+var S = { boot: null, role: 'N', pattern: 'N1', member: 0, editing: null, listMonth: null, pendingIdx: null };
+var PEND_KEY = 'logbook.pending'; // localStorage: legs queued with 「キューに追加」, not yet written to the sheet
 var TOTAL_KEYS, COLS = {}, DUR_KEYS = [];
 var $ = function (sel) { return document.querySelector(sel); };
 var $$ = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
@@ -489,6 +515,13 @@ function hm(min, blank) {
 function hours1(min) { return (Number(min || 0) / 60).toFixed(1); }
 /** UI label for a column: the JCAB label from the server, with "SIC" shown as "CO" in the UI. */
 function lbl(k) { return (COLS[k] ? COLS[k].label : k).replace(/SIC/g, 'CO'); }
+/** "0745" / "745" → "07:45" (clock) ; for durations "0130" → "1:30". Other values are returned unchanged. */
+function normClock(v, isClock) {
+  var s = String(v || '').trim(), m = s.match(/^(\d{1,2})(\d{2})$/);
+  if (!m || parseInt(m[2], 10) > 59) return s;
+  if (isClock) { if (parseInt(m[1], 10) > 23) return s; return ('0' + m[1]).slice(-2) + ':' + m[2]; }
+  return parseInt(m[1], 10) + ':' + m[2];
+}
 function blockOf(dep, arr) {
   if (!dep || !arr) return 0;
   var d = toMin(dep), a = toMin(arr);
@@ -548,6 +581,7 @@ function reboot(initial) {
     var lm = $('#listMonth'); lm.innerHTML = '';
     var months = b.months.length ? b.months : [b.today.substring(0, 7)];
     months.forEach(function (m) { var o = document.createElement('option'); o.value = m; o.textContent = m; lm.appendChild(o); });
+    renderPending();
     if (initial) resetForm();
   }).catch(function (e) { toast(e.message, true); });
 }
@@ -567,7 +601,8 @@ function renderHeader(c) {
     '<span>CO <b>' + hm(c.sic + c.solo_sic) + '</b></span>' +
     '<span>夜間 <b>' + hm(c.pic_night + c.sic_night) + '</b></span>' +
     '<span>計器 <b>' + hm(c.ifr) + '</b></span>' +
-    '<span>離陸/着陸 <b>' + c.takeoffs + '/' + c.landings + '</b></span>';
+    '<span>離陸/着陸 <b>' + c.takeoffs + '/' + c.landings + '</b></span>' +
+    (loadPending().length ? '<span>未保存 <b class="pend">' + loadPending().length + '</b></span>' : '');
 }
 
 function fillDatalists(b) {
@@ -584,7 +619,11 @@ function fillDatalists(b) {
 /* ---------- form ---------- */
 var F = function () { return document.forms.flightForm; };
 var fv = function (k) { var el = F().elements[k]; return el ? el.value : ''; };
-var fset = function (k, v) { var el = F().elements[k]; if (el) el.value = v === undefined || v === null ? '' : v; };
+var fset = function (k, v) {
+  var el = F().elements[k]; if (!el) return;
+  if (el.type === 'checkbox') { el.checked = v === '1' || v === 1 || v === true; return; }
+  el.value = v === undefined || v === null ? '' : v;
+};
 
 function buildDetailGrid() {
   var g = $('#detailGrid'); g.innerHTML = '';
@@ -598,6 +637,9 @@ function buildDetailGrid() {
 
 function bindForm() {
   var f = F();
+  // digit-only shortcuts: register FIRST so the other change handlers see the normalised value
+  ['dep_time', 'arr_time'].forEach(function (k) { f.elements[k].addEventListener('change', function () { this.value = normClock(this.value, true); }); });
+  $$('#flightForm input.dur').forEach(function (el) { el.addEventListener('change', function () { this.value = normClock(this.value, false); }); });
   ['dep_time', 'arr_time'].forEach(function (k) {
     f.elements[k].addEventListener('change', function () { recalcBlock(false); });
     f.elements[k].addEventListener('input', function () { recalcBlock(true); });
@@ -611,7 +653,7 @@ function bindForm() {
   $$('#roleSeg button').forEach(function (b) {
     b.addEventListener('click', function () { setRole(b.dataset.role); applyRole(); });
   });
-  ['aircraft_type', 'registration', 'dep', 'arr'].forEach(function (k) {
+  ['aircraft_type', 'registration', 'dep', 'arr', 'flight_no'].forEach(function (k) {
     f.elements[k].addEventListener('change', function () { this.value = this.value.toUpperCase().trim(); });
   });
   f.elements.registration.addEventListener('change', function () {
@@ -620,6 +662,9 @@ function bindForm() {
     if (hit && !fv('aircraft_type')) fset('aircraft_type', hit.aircraft_type);
   });
   $('#btnSave').addEventListener('click', saveFlight);
+  $('#btnQueue').addEventListener('click', queueFlight);
+  $('#btnSaveAll').addEventListener('click', saveAllPending);
+  $('#btnClearPending').addEventListener('click', clearPending);
   $('#btnReset').addEventListener('click', function () { resetForm(); });
   $('#btnCopyReturn').addEventListener('click', copyReturn);
 }
@@ -643,7 +688,7 @@ function setRole(r, pattern, member) {
   $('#crewMember').style.display = isCrew ? '' : 'none';
   if (isCrew) {
     var list = CREW_PATTERNS.filter(function (p) { return p.kind === r; });
-    S.pattern = pattern && list.some(function (p) { return p.id === pattern; }) ? pattern : list[0].id;
+    S.pattern = pattern && list.some(function (p) { return p.id === pattern; }) ? pattern : (CREW_DEFAULT_PATTERN[r] || list[0].id);
     $('#crewPattern').innerHTML = list.map(function (p) {
       return '<option value="' + p.id + '"' + (p.id === S.pattern ? ' selected' : '') + '>' + esc(p.id + ': ' + p.crew.join(' / ')) + '</option>';
     }).join('');
@@ -708,8 +753,9 @@ function resetForm(keep) {
   var f = F(); var prev = keep ? readForm() : null;
   f.reset();
   DUR_KEYS.forEach(function (k) { fset(k, ''); });
-  fset('id', ''); S.editing = null;
+  fset('id', ''); S.editing = null; S.pendingIdx = null;
   $('#formTitle').textContent = '新規レグ入力';
+  $('#btnQueue').textContent = 'キューに追加';
   var st = S.boot ? S.boot.settings : {};
   fset('date', prev ? prev.date : (S.boot ? S.boot.today : ''));
   fset('aircraft_type', prev ? prev.aircraft_type : (st.default_aircraft_type || ''));
@@ -723,11 +769,12 @@ function resetForm(keep) {
 
 function readForm() {
   var f = F(), o = {};
-  Array.prototype.forEach.call(f.elements, function (el) { if (el.name) o[el.name] = el.value; });
+  Array.prototype.forEach.call(f.elements, function (el) { if (el.name) o[el.name] = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value; });
   return o;
 }
 
-function saveFlight() {
+/** Read + validate the form into a flight record (minutes, crew code). Returns null (after a toast) on error. */
+function buildRecord() {
   if (!fv('_actual')) recalcBlock(true);
   if (!fv('block') && S.role !== 'sim' && fv('_actual')) applyRole();
   if (S.role === 'sim' && !fv('sim') && fv('_actual')) applyRole();
@@ -737,24 +784,114 @@ function saveFlight() {
     if (COLS[k].kind === 'meta' && k !== 'id') return;
     if (o[k] !== undefined) rec[k] = o[k];
   });
-  try { DUR_KEYS.forEach(function (k) { rec[k] = toMin(o[k]); }); } catch (e) { toast(e.message, true); return; }
+  try { DUR_KEYS.forEach(function (k) { rec[k] = toMin(o[k]); }); } catch (e) { toast(e.message, true); return null; }
+  ['aircraft_type', 'registration', 'dep', 'arr', 'flight_no'].forEach(function (k) { rec[k] = String(rec[k] || '').trim().toUpperCase(); });
   rec.takeoffs = Number(o.takeoffs) || 0; rec.landings = Number(o.landings) || 0;
-  if (!rec.block && !rec.sim && !rec.ftd) { toast('飛行時間が 0 です。OUT/IN 時刻またはブロックタイムを入力してください', true); return; }
+  if (!rec.date) { toast('月日を入力してください', true); return null; }
+  var missing = [['aircraft_type', '航空機の型式'], ['dep', '出発地'], ['arr', '到着地']].concat(S.role === 'sim' ? [] : [['registration', '登録記号']])
+    .filter(function (m) { return !rec[m[0]]; }).map(function (m) { return m[1]; });
+  if (missing.length) { toast(missing.join('・') + ' を入力してください', true); return null; }
+  if (!rec.block && !rec.sim && !rec.ftd) { toast('飛行時間が 0 です。OUT/IN 時刻またはブロックタイムを入力してください', true); return null; }
+  return rec;
+}
+
+/** After a leg is stored (queued or saved): keep date / aircraft / crew, chain the next departure. */
+function nextLegForm(saved, wasEdit) {
+  resetForm(!wasEdit);
+  if (!wasEdit) fset('dep', saved.arr);
+}
+
+/** 今すぐ保存: write this one leg to the sheet immediately (one round trip, year sheet refresh). */
+function saveFlight() {
+  var rec = buildRecord(); if (!rec) return;
+  var pendIdx = S.pendingIdx;
   var btn = $('#btnSave'); btn.disabled = true; $('#formStatus').textContent = '保存中…';
   call(rec.id ? 'apiUpdateFlight' : 'apiAddFlight', rec).then(function (res) {
     var saved = res.flight;
     toast((rec.id ? '更新' : '追加') + 'しました: ' + saved.date + ' ' + saved.flight_no + (res.refreshed && res.refreshed.length ? ' / ' + res.refreshed.join(', ') + ' 更新' : ''));
-    var wasEdit = !!rec.id;
-    resetForm(!wasEdit);
-    if (!wasEdit) { fset('dep', saved.arr); }
+    if (pendIdx !== null) { var l = loadPending(); l.splice(pendIdx, 1); savePending(l); }
+    nextLegForm(saved, !!rec.id);
     return reboot().then(function () { if (S.listMonth) loadMonth(S.listMonth); });
   }).catch(function (e) { toast(e.message, true); $('#formStatus').textContent = ''; })
     .then(function () { btn.disabled = false; });
 }
 
+/* ---------- pending queue (localStorage) ---------- */
+function loadPending() {
+  try { var l = JSON.parse(localStorage.getItem(PEND_KEY) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+}
+function savePending(list) {
+  try { if (list.length) localStorage.setItem(PEND_KEY, JSON.stringify(list)); else localStorage.removeItem(PEND_KEY); }
+  catch (e) { toast('この端末に一時保存できません: ' + e.message, true); }
+  renderPending();
+}
+/** キューに追加: validate the form and keep the leg in localStorage (no network). */
+function queueFlight() {
+  var rec = buildRecord(); if (!rec) return;
+  var l = loadPending();
+  if (S.pendingIdx !== null && l[S.pendingIdx]) l[S.pendingIdx] = rec; else l.push(rec);
+  savePending(l);
+  toast((rec.id ? '更新を' : '') + 'キューに追加しました: ' + rec.date + ' ' + rec.flight_no + ' (未保存 ' + l.length + ' 件)');
+  nextLegForm(rec, !!rec.id);
+  if (S.boot) renderHeader(S.boot.cumulative);
+}
+function renderPending() {
+  var l = loadPending(), card = $('#pendingCard');
+  card.style.display = l.length ? '' : 'none';
+  $('#pendingCount').textContent = l.length + ' 件';
+  $('#btnSaveAll').textContent = 'まとめて保存 (' + l.length + ' 件)';
+  if (!l.length) { $('#pendingTable').innerHTML = ''; return; }
+  var h = '<thead><tr><th>#</th><th>月日</th><th>型式</th><th>登録</th><th>出発</th><th>到着</th><th class="num">OUT</th><th class="num">IN</th><th>内容</th><th class="num">飛行</th><th class="num">PIC</th><th class="num">CO</th><th>編成</th><th></th><th></th></tr></thead><tbody>';
+  l.forEach(function (f, i) {
+    h += '<tr class="' + roleOf(f) + '"><td>' + (i + 1) + '</td><td>' + esc(f.date) + '</td><td>' + esc(f.aircraft_type) + '</td><td>' + esc(f.registration) + '</td><td>' + esc(f.dep) + '</td><td>' + esc(f.arr) + '</td>' +
+      '<td class="num">' + esc(f.dep_time) + '</td><td class="num">' + esc(f.arr_time) + '</td><td>' + esc(f.flight_no) + '</td><td class="num">' + hm(f.block, true) + '</td><td class="num">' + hm(f.pic, true) + '</td><td class="num">' + hm((f.sic || 0) + (f.solo_sic || 0), true) + '</td>' +
+      '<td>' + (f.crew ? '<span class="tag">' + esc(f.crew) + '</span>' : '') + (f.qpr === '1' ? ' <span class="tag qpr">QPR</span>' : '') + '</td><td>' + (f.id ? '<span class="tag">既存レグの更新</span>' : '新規') + '</td>' +
+      '<td><button class="btn small" data-i="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-i="' + i + '" data-act="del">削除</button></td></tr>';
+  });
+  $('#pendingTable').innerHTML = h + '</tbody>';
+  $('#pendingTable').onclick = function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    var i = Number(b.dataset.i);
+    if (b.dataset.act === 'edit') editPending(i);
+    else { var l2 = loadPending(); l2.splice(i, 1); savePending(l2); if (S.pendingIdx === i) resetForm(); if (S.boot) renderHeader(S.boot.cumulative); }
+  };
+}
+function editPending(i) {
+  var f = loadPending()[i]; if (!f) return;
+  editFlight(f);
+  S.pendingIdx = i;
+  $('#formTitle').textContent = '未保存レグの編集 (#' + (i + 1) + '): ' + f.date + ' ' + (f.flight_no || '');
+  $('#btnQueue').textContent = 'キューを更新';
+}
+function clearPending() {
+  var l = loadPending(); if (!l.length) return;
+  if (!confirm('未保存の ' + l.length + ' 件をすべて破棄しますか?（スプレッドシートには書き込まれません）')) return;
+  savePending([]); resetForm(); if (S.boot) renderHeader(S.boot.cumulative);
+}
+/** まとめて保存: one apiSaveFlights request for the whole queue (atomic on the server). */
+function saveAllPending() {
+  var l = loadPending(); if (!l.length) { toast('未保存のレグはありません'); return; }
+  var btn = $('#btnSaveAll'); btn.disabled = true; $('#btnClearPending').disabled = true;
+  $('#pendingStatus').textContent = l.length + ' 件を保存中…';
+  var t0 = Date.now();
+  call('apiSaveFlights', l).then(function (res) {
+    savePending([]);
+    toast('まとめて保存しました: 追加 ' + res.added + ' / 更新 ' + res.updated + (res.refreshed && res.refreshed.length ? ' / ' + res.refreshed.join(', ') + ' 更新' : '') + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' 秒)');
+    $('#pendingStatus').textContent = '';
+    if (S.pendingIdx !== null) resetForm();
+    return reboot().then(function () { if (S.listMonth) loadMonth(S.listMonth); });
+  }).catch(function (e) {
+    toast(e.message, true);
+    $('#pendingStatus').textContent = '保存できませんでした（キューは残っています）: ' + e.message;
+  }).then(function () { btn.disabled = false; $('#btnClearPending').disabled = false; });
+}
+
 function copyReturn() {
   var o = readForm();
   var dep = o.dep, arr = o.arr;
+  // right after 「キューに追加」 the form only holds the next departure: take the last queued leg instead
+  var last = loadPending().slice(-1)[0];
+  if ((!dep || !arr) && last) { dep = last.dep; arr = last.arr; }
   resetForm(true);
   fset('dep', arr); fset('arr', dep);
   fset('flight_no', ''); fset('dep_time', ''); fset('arr_time', ''); fset('_actual', ''); fset('block', ''); fset('_night', ''); fset('ifr', '');
@@ -796,11 +933,11 @@ function deleteFlight(f) {
 }
 
 /* ---------- tables ---------- */
-var LIST_COLS = ['date', 'aircraft_type', 'registration', 'dep', 'arr', 'dep_time', 'arr_time', 'flight_no', 'takeoffs', 'landings', 'block', 'pic', 'pic_xc', 'pic_night', 'sic', 'sic_xc', 'sic_night', 'ifr', 'sim', 'crew', 'remarks'];
+var LIST_COLS = ['date', 'aircraft_type', 'registration', 'dep', 'arr', 'dep_time', 'arr_time', 'flight_no', 'takeoffs', 'landings', 'block', 'pic', 'pic_xc', 'pic_night', 'sic', 'sic_xc', 'sic_night', 'ifr', 'sim', 'crew', 'qpr', 'remarks'];
 
 function renderTable(table, flights, opts) {
   opts = opts || {};
-  var cols = opts.compact ? LIST_COLS.slice(0, 12).concat(['sic', 'ifr']) : LIST_COLS;
+  var cols = opts.compact ? LIST_COLS.slice(0, 12).concat(['sic', 'ifr', 'qpr']) : LIST_COLS;
   var h = '<thead><tr>' + cols.map(function (k) { return '<th class="' + (COLS[k].kind === 'min' || COLS[k].kind === 'int' ? 'num' : '') + '">' + esc(shortLabel(k)) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>';
   flights.forEach(function (f, i) {
     h += '<tr class="' + roleOf(f) + '">' + cols.map(function (k) {
@@ -808,6 +945,7 @@ function renderTable(table, flights, opts) {
       if (c.kind === 'min') return '<td class="num">' + hm(v, true) + '</td>';
       if (c.kind === 'int') return '<td class="num">' + (v || '') + '</td>';
       if (k === 'crew') return '<td>' + (v ? '<span class="tag">' + esc(v) + '</span>' : '') + '</td>';
+      if (k === 'qpr') return '<td>' + (v === '1' ? '<span class="tag qpr">QPR</span>' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
     }).join('') + '<td><button class="btn small" data-i="' + i + '" data-act="edit">編集</button> <button class="btn small danger" data-i="' + i + '" data-act="del">削除</button></td></tr>';
   });
@@ -830,7 +968,7 @@ function renderTable(table, flights, opts) {
   };
 }
 function shortLabel(k) {
-  return { aircraft_type: '型式', registration: '登録', dep: '出発', arr: '到着', dep_time: 'OUT', arr_time: 'IN', flight_no: '内容', block: '飛行', pic: 'PIC', pic_xc: 'PIC野外', pic_night: 'PIC夜', sic: 'CO', sic_xc: 'CO野外', sic_night: 'CO夜', ifr: '計器', sim: 'SIM', takeoffs: 'T/O', landings: 'LDG', date: '月日', remarks: '自由欄', crew: '編成' }[k] || lbl(k);
+  return { aircraft_type: '型式', registration: '登録', dep: '出発', arr: '到着', dep_time: 'OUT', arr_time: 'IN', flight_no: '内容', block: '飛行', pic: 'PIC', pic_xc: 'PIC野外', pic_night: 'PIC夜', sic: 'CO', sic_xc: 'CO野外', sic_night: 'CO夜', ifr: '計器', sim: 'SIM', takeoffs: 'T/O', landings: 'LDG', date: '月日', remarks: '自由欄', crew: '編成', qpr: 'QPR' }[k] || lbl(k);
 }
 
 function loadMonth(ym) {
@@ -898,6 +1036,11 @@ function loadQualification() {
       h += qItem(t.status, t.label, t.last ? '前回 ' + t.last : '記録なし',
         t.last ? '次回 基準月 ' + t.baseMonth + ' (実施期間 ' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '飛行内容に ' + t.code + ' と記入すると自動判定');
     });
+    if (q.qpr) {
+      var lq = q.qpr.last;
+      h += qItem(q.qpr.status, 'QPR (' + q.qpr.fy + '年度)', q.qpr.count + ' 回',
+        (lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '記録なし') + ' / 入力フォームの「QPR フライト」にチェックしたレグ');
+    }
     q.expiries.forEach(function (e) {
       h += qItem(e.status, e.label, e.date ? '有効期限 ' + e.date : '未設定',
         e.date && e.status !== 'invalid' ? (e.daysLeft < 0 ? Math.abs(e.daysLeft) + ' 日超過' : '残り ' + e.daysLeft + ' 日 (' + e.warnDays + ' 日前から警告)') : '設定タブで入力');

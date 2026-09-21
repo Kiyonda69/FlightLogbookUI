@@ -92,8 +92,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 | remarks | text | 自由欄 |
 | source / created_at / updated_at | meta | 由来 (`ui` / `csv:...` / `numbers:...`) と時刻 |
 | crew | text | 編成コード `M2/0`（パターン id / 自分の位置）, `SPLIT`, `SIM`, 旧データは空。帳票には出さない |
+| qpr | text | QPR フライトなら `'1'`、それ以外は空（`normalizeFlight_` が true / 1 / yes / ○ を `'1'` に正規化）。帳票には出さず、資格要件チェックリスト シートの QPR 欄（29〜36 行）と集計タブの「QPR (年度)」に反映 |
 
-列を末尾に追加したときは `ensureFlightsHeader_`（`setupSpreadsheet` と書式修復が呼ぶ）が既存シートに見出しとテキスト書式を追加する。
+列を末尾に追加したときは `ensureFlightsHeader_`（`setupSpreadsheet` と書式修復が呼ぶほか、`readAllFlights_` / `writeFlightRows_` が列数不足を検知すると自動で呼ぶ）が既存シートに見出しとテキスト書式を追加する。コードを貼り直しただけで既存シートがそのまま使える（`qpr` 列追加時に確認）。
 
 ### 不変条件
 
@@ -108,7 +109,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
   - 項小計 = 当月レグの合計
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
   - 合計 = 前項までの合計 + 項小計
-- **年次シート `飛行日誌_YYYY` は手動生成しない**。`apiAddFlight` / `apiUpdateFlight` / `apiDeleteFlight` / `apiImportCsv` / `apiSaveSettings` が `refreshYearSheets_(fromYear)` を呼び、対象年とそれ以降の年（前項までの合計が変わる）を再生成する。年の初レグでシートが新規作成される。UI に帳票タブは無い（設定タブにシート一覧の表示のみ）。書き込み API は `{ flight, refreshed: [sheetName...] }` を返す。
+- **年次シート `飛行日誌_YYYY` は手動生成しない**。`apiAddFlight` / `apiUpdateFlight` / `apiSaveFlights` / `apiDeleteFlight` / `apiImportCsv` / `apiSaveSettings` が `refreshYearSheets_(fromYear)` を呼び、対象年とそれ以降の年（前項までの合計が変わる）を再生成する。年の初レグでシートが新規作成される。UI に帳票タブは無い（設定タブにシート一覧の表示のみ）。書き込み API は `{ flight, refreshed: [sheetName...] }` を返す。
 - 再生成コストを抑える設計: レイアウト（各月ブロックの開始行と行数）と `REPORT_DESIGN_VERSION` が前回（Script Properties `report_layout_<sheet>`）と同じなら **値の `setValues` 1 回だけ**（書式・罫線・結合・列幅は残っているので触らない）。変わったとき、または `force`（メニューの「年次帳票をすべて再生成」と `repairFlightsSheetFormats`）のときだけ `clear` → 書式 → 値 → `RangeList` でスタイル・罫線 → 結合・行高・列幅、の完全再構築。`getSettings_` は実行内キャッシュ（`apiSaveSettings` で無効化）。実測: 完全再構築 約 12 秒/年、値のみ 約 2〜3 秒/年（見込み）。
 - 帳票デザインは Numbers 原本のスクリーンショットに合わせてある（`Report.gs` 冒頭コメント参照）: 細い格子 + 中太の外枠、ヘッダー下と合計行上の中太線、グループ境界（I, K, L, Q, U, W, Z, AB 列の左）の中太縦線、離陸|着陸 間の点線、1 行おきの薄い縞（合計行まで連続）、合計 3 行の左側 A..G を 1 セルに結合、ヘッダー「月日／＿＿年」「航空機／の型式」「自由欄／INST」、全セル中央揃え・通常ウェイト・Noto Sans JP 10pt、列幅は `REPORT_COL_WIDTHS`。Numbers の数式由来の `0:00` 埋めは再現しない。見た目を変えたら `REPORT_DESIGN_VERSION` を上げる。
 - 重複判定キー（CSV 取込）: `date | dep_time | flight_no | registration`。
@@ -119,14 +120,30 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 根拠資料: JAL FLTOPS B777 ADM_Administration 26.29 (14 SEP 2026) 9-3「マルチまたはダブル編成時の飛行時間配分」飛行時間配分表 (Rev.2)。
 
 - `CrewRules.html` が **唯一の配分表**（`CREW_PATTERNS`）と計算関数 `allocateCrew(patternId, member, block, xc, night)` を持つ。プレーン JS を `<script>` で包んであり、UI は `include('CrewRules')` で読み込み、サーバーは `Crew.gs` の `loadCrewRules_()`（`new Function`）で同じコードを評価する。テストは `tools/test_logic.js` で資料の例（8:19 の CA DUTY → 機長 4:10 + 副操縦士 1:23 = 飛行時間 5:33）を検証。
-- パターン: 通常 N1〜N3（2 名、全時間を自分の DUTY へ）、マルチ M1〜M11（3 名）、ダブル D1〜D6（4 名）。**ダブル Pattern 7・8 は資料のスクリーンショットで切れているため未収録**。資料が揃ったら `CREW_PATTERNS` に追加するだけでよい。
+- パターン: 通常 N1〜N3（2 名、全時間を自分の DUTY へ）、マルチ M1〜M11（3 名）、ダブル D1〜D8（4 名）。D7 = CA/CA/CA/PUS（CA: 1/3CA + 1/6CO、PUS: 1/2PUS）、D8 = CA/CA/CO/PUS（全員 1/2）は 2 枚目のスクリーンショット（2026-09-21 追加）から収録。編成切替時の既定パターンは `CREW_DEFAULT_PATTERN`（通常 N1: CA/CO、マルチ M2: CA/CA/CO、ダブル D3: CA/CA/CO/CO）。
+- 注意: 配分表の分数の合計はパターンにより 2 にならない（例 M6 は 7/3）。資料どおりに写してあるので「合計 = 2」のような検算をテストに入れないこと。
 - 計算規則: 各項（分数 × ブロックタイム）を **項ごとに四捨五入**し、**飛行時間 (8 項) はその合計**（ブロックタイムの 2/3 等ではない）。野外・夜間も同じ分数。DUTY → 列: CA/CKC/RAL → 機長 (9)、SIC → 単独・副機長 (10)、PUS → 機長見習 (11)、CO → 副操縦士 (14)。野外・夜間は CA/CKC/RAL/SIC/PUS が機長側 (12/13)、CO が副操縦士側 (16/17)。
 - UI: 「編成」= 通常 / マルチ / ダブル / 手動分割 / SIM。マルチ・ダブルは「パターン」と「自分（何番目・DUTY・計算式）」を選ぶ。入力 `_actual` = OUT→IN のブロックタイム（自動計算）、`_night` = 実夜間時間、`_xc` = 野外の有無。`block`（8 項）は計算結果で、詳細欄で手動上書き可。
+- QPR: 入力フォームの「QPR フライト」チェック → `qpr` 列。`Qual.gs` が CAP 様式（A1:J27）の **下**（29〜36 行: タイトル / 見出し / 前回 QPR / 年度別 FY-1〜FY+3 の回数と「日付 便名 区間」一覧）に書く。様式そのものには QPR 欄が無いので追加ブロックにした。年度は 4 月始まり（`fyOf_`）。年度行の高さは件数で伸ばす（`sizeQprRows_`、値のみ更新の fast path でも実行）。`QUAL_DESIGN_VERSION` = 2。
 - 保存時に `crew` 列へ編成コード（`M2/0` = パターン / 自分の位置、`SPLIT`、`SIM`）を記録し、編集時に選択を復元する。**編集時は保存済みの値を再計算しない**（旧ルールで記録した過去レグを壊さないため）。編成や時刻を変えたときだけ再計算。
 - 編集時の「実時間」入力（`_night`, 時刻が無いときの `_actual`）は、保存値（配分後）を自分の分数の合計で割って逆算する（例: 夜間 2:00 + 0:40 を 2/3 で割って 4:00）。合計をそのまま入れると再計算で二重配分になる（Chrome 実機テストで発見した不具合）。
 - 旧データ（2024 年以前）は 3/4 + 1/4 など旧ルールで記録されている。Rev.2 は新規入力にのみ適用。
 
 「JCAB 全項目を直接編集」を開けば任意の列を手動上書きできる。プリセットは補助であり、最終値は保存時のフォーム値。
+
+### 入力の補助（Script.html）
+
+- 便名 `flight_no` は UI（`change` で大文字化、CSS `text-transform`）とサーバー（`normalizeFlight_`）の両方で **大文字固定**。型式・登録記号・空港コードと同じ扱い。
+- 時刻・時間の 3〜4 桁入力は `normClock()` が `change` 時に `H:MM` へ直す（`0745` → `07:45`、`130` → `1:30`。末尾 2 桁が 60 以上なら触らない）。サーバーの `parseClock_` も `0745` を受け付ける。他の `change` ハンドラより **先に登録**しておくこと（`applyRole` が正規化後の値を見る必要がある）。時間欄で桁だけの値を「分」として解釈する `toMin` の規則は変えていない（繰越合計の欄は対象外）。
+- 必須チェックは `buildRecord()`（月日・型式・出発・到着、SIM 以外は登録記号、飛行時間 0 の拒否）。「今すぐ保存」と「キューに追加」の両方がここを通る。
+
+### まとめて保存（未保存キュー、localStorage `logbook.pending`）
+
+- 保存のたびに年次シートを更新するため 1 レグ 5〜8 秒かかる。その対策として、入力フォームの主ボタンは **「キューに追加」**（通信なし、`localStorage` に配列で保持、ページを閉じても残る）。「今すぐ保存」は従来どおり 1 レグを即書き込み。
+- キューは入力タブの「未保存レグ」カード（編集 / 削除 / すべて破棄）とヘッダーの「未保存 N」に出る。編集は `editPending(i)` → `editFlight(rec)` を再利用し、`S.pendingIdx` を持って「キューを更新」で置き換える。既存レグ（`id` あり）の編集もキューに入れられ、「既存レグの更新」タグが付く。
+- 「まとめて保存」は `apiSaveFlights(items)`（Api.gs）を 1 回呼ぶ。サーバーは **全件を先に検証**（1 件でも不正なら何も書かず `N 件目: …` で失敗）、新規行は 1 回の `writeFlightRows_`、更新は行ごと、`upsertMasters_` と `refreshYearSheets_(最小の年)` を 1 回。戻り値 `{ flights, added, updated, refreshed }`。失敗時はキューをそのまま残す。
+- 「復路を作成」はフォームが空（キュー追加直後）のとき、キューの最後のレグの出発/到着を使う。
+- キューは端末ローカルで、スプレッドシートにもサーバーにも無い。別端末からは見えない。集計・一覧はキューを含まない。
 
 ### 資格要件（集計タブ、`apiQualification` in Totals.gs）
 

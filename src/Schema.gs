@@ -48,7 +48,8 @@ var FLIGHT_COLUMNS = [
   { key: 'source',          kind: 'meta', label: 'Source' },
   { key: 'created_at',      kind: 'meta', label: 'Created' },
   { key: 'updated_at',      kind: 'meta', label: 'Updated' },
-  { key: 'crew',            kind: 'text', label: '編成' }   // "M2/0" = pattern id / my index (see CrewRules.html); "SPLIT", "SIM" or blank
+  { key: 'crew',            kind: 'text', label: '編成' },  // "M2/0" = pattern id / my index (see CrewRules.html); "SPLIT", "SIM" or blank
+  { key: 'qpr',             kind: 'text', label: 'QPR' }    // '1' when the leg was a QPR flight (資格要件チェックリストの QPR 欄に反映), else ''
 ];
 
 /** Keys that are summed for 項小計 / 前項までの合計 / 合計. Order = report column order. */

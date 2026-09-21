@@ -8,6 +8,7 @@
 function readAllFlights_() {
   var sh = ss_().getSheetByName(SHEET_FLIGHTS);
   if (!sh) throw new Error('Flights シートがありません。setupSpreadsheet を実行してください。');
+  if (sh.getLastColumn() < FLIGHT_COLUMNS.length) ensureFlightsHeader_(sh);   // self-heal after a column was added to FLIGHT_COLUMNS
   var last = sh.getLastRow();
   if (last < 2) return [];
   var rows = sh.getRange(2, 1, last - 1, FLIGHT_COLUMNS.length).getValues();
@@ -29,6 +30,7 @@ function readAllFlights_() {
 function writeFlightRows_(sh, startRow, rows) {
   var n = rows.length;
   if (!n) return;
+  if (sh.getLastColumn() < FLIGHT_COLUMNS.length) ensureFlightsHeader_(sh);
   sh.getRange(startRow, colIndex_('date') + 1, n, colIndex_('flight_no') - colIndex_('date') + 1).setNumberFormat('@');
   sh.getRange(startRow, colIndex_('remarks') + 1, n, FLIGHT_COLUMNS.length - colIndex_('remarks')).setNumberFormat('@');
   sh.getRange(startRow, 1, n, FLIGHT_COLUMNS.length).setValues(rows);
@@ -124,6 +126,54 @@ function apiUpdateFlight(input) {
 }
 
 /** Delete a flight by id. Returns { deleted, refreshed }. */
+/**
+ * Save several legs in ONE request (the UI queues legs in localStorage and sends them together).
+ * items: array of flight inputs; an item with `id` updates that row, otherwise it is appended.
+ * All items are validated before anything is written (atomic: one bad leg → nothing saved), new rows
+ * are written with a single setValues and the year sheets are refreshed once from the earliest year.
+ * Returns { flights: [...saved in input order], added, updated, refreshed }.
+ */
+function apiSaveFlights(items) {
+  if (!items || !items.length) throw new Error('保存するレグがありません');
+  if (items.length > 200) throw new Error('一度に保存できるのは 200 レグまでです');
+  var existingAll = readAllFlights_();
+  var byId = {}; existingAll.forEach(function (x) { byId[x.id] = x; });
+  var now = nowIso_(), fromYear = null;
+  var prepared = items.map(function (input, i) {
+    var f;
+    try { f = normalizeFlight_(input || {}); } catch (e) { throw new Error((i + 1) + ' 件目: ' + e.message); }
+    var existing = input && input.id ? byId[input.id] : null;
+    if (input && input.id && !existing) throw new Error((i + 1) + ' 件目: 該当レコードが見つかりません: ' + input.id);
+    if (existing) {
+      f.id = existing.id; f.source = existing.source || 'ui'; f.created_at = existing.created_at;
+      if (existing.date < f.date) fromYear = minYear_(fromYear, existing.date);
+    } else {
+      f.id = Utilities.getUuid(); f.source = 'ui'; f.created_at = now;
+    }
+    f.updated_at = now;
+    fromYear = minYear_(fromYear, f.date);
+    return { flight: f, row: existing ? existing._row : 0 };
+  });
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  var refreshed, added = 0, updated = 0;
+  try {
+    var sh = ss_().getSheetByName(SHEET_FLIGHTS);
+    var newRows = [];
+    prepared.forEach(function (p) {
+      if (p.row) { writeFlightRows_(sh, p.row, [flightToRow_(p.flight)]); updated++; }
+      else { newRows.push(flightToRow_(p.flight)); added++; }
+    });
+    if (newRows.length) writeFlightRows_(sh, sh.getLastRow() + 1, newRows);
+    upsertMasters_(prepared.map(function (p) { return p.flight; }));
+    refreshed = refreshYearSheets_(fromYear);
+  } finally { lock.releaseLock(); }
+  return { flights: prepared.map(function (p) { return p.flight; }), added: added, updated: updated, refreshed: refreshed };
+}
+function minYear_(cur, date) {
+  var y = String(date).substring(0, 4);
+  return cur && cur < y ? cur : y;
+}
 function apiDeleteFlight(id) {
   var existing = readAllFlights_().filter(function (x) { return x.id === id; })[0];
   if (!existing) throw new Error('該当レコードが見つかりません: ' + id);

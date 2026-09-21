@@ -131,6 +131,14 @@ function apiQualification(today) {
     return { code: t.code, label: t.label, last: lastDate, baseMonth: base, windowFrom: from, windowUntil: until, status: status };
   });
 
+  // QPR flights (leg flag) — this fiscal year (April-March) and the latest one
+  var fy = fyOf_(today);
+  var qprAll = all.filter(function (f) { return f.qpr === '1' && f.date <= today; });
+  var qprFy = qprAll.filter(function (f) { return fyOf_(f.date) === fy; });
+  var qprPick = function (f) { return { date: f.date, flight_no: f.flight_no, dep: f.dep, arr: f.arr }; };
+  out.qpr = { fy: fy, count: qprFy.length, flights: qprFy.map(qprPick), last: qprAll.length ? qprPick(qprAll[qprAll.length - 1]) : null,
+    status: qprFy.length ? 'ok' : 'warn' };
+
   // expiries from settings (list fields: the LATEST date is the one in force)
   out.expiries = QUAL_EXPIRIES.map(function (e) {
     var v = String(settings[e.key] || '').trim();
