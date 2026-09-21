@@ -29,9 +29,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   ├── Util.gs              分/時刻/日付のパース・整形、normalizeFlight_（バリデーション）
 │   ├── Api.gs               UI から呼ぶ関数 (apiBootstrap, apiGetMonth, apiAdd/Update/DeleteFlight, 設定, マスター)
 │   ├── Totals.gs            項小計 / 前項までの合計 / 合計、年間集計、直近 N 日
-│   ├── Report.gs            JCAB 様式シート生成: 月次「飛行日誌_YYYY-MM」/ 年次「飛行日誌_YYYY」（12 か月ブロック、Numbers の年シート相当）
+│   ├── Report.gs            年次 JCAB 様式シート「飛行日誌_YYYY」（12 か月ブロック、Numbers の年シート相当）を書き込みのたびに自動再生成
 │   ├── Import.gs            CSV / 繰越 JSON 取込（importCarryForwardFromDrive / importCarryForwardPrompt は引数なしでエディタ・メニューから実行可）
-│   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 帳票 / 設定・取込）
+│   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 設定・取込）
 │   ├── Style.html           CSS
 │   └── Script.html          クライアント JS（google.script.run 経由でサーバー関数を呼ぶ）
 ├── tools/
@@ -101,6 +101,8 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
   - 項小計 = 当月レグの合計
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
   - 合計 = 前項までの合計 + 項小計
+- **年次シート `飛行日誌_YYYY` は手動生成しない**。`apiAddFlight` / `apiUpdateFlight` / `apiDeleteFlight` / `apiImportCsv` / `apiSaveSettings` が `refreshYearSheets_(fromYear)` を呼び、対象年とそれ以降の年（前項までの合計が変わる）を再生成する。年の初レグでシートが新規作成される。UI に帳票タブは無い（設定タブにシート一覧の表示のみ）。書き込み API は `{ flight, refreshed: [sheetName...] }` を返す。
+- 再生成コストを抑える設計: 年全体を 1 回の `setValues`、書式は `RangeList`、ヘッダー結合はレイアウト（各月ブロックの開始行、Script Properties `report_layout_<sheet>`）が変わったときだけ `breakApart` して作り直す。1 年分で十数回の Sheets 呼び出し。
 - 重複判定キー（CSV 取込）: `date | dep_time | flight_no | registration`。
 - 帳票に文字列らしき値（月日 `"5.30"`、時刻 `"23:40"`）を書くときは **`setNumberFormat('@')` を `setValues` より先に**呼ぶ。後から書式を付けても Sheets は書き込み時点で `5.3` に変換してしまう（実際に起きた不具合）。`dev/mock_gas.js` はこの自動変換を模擬するので、テストで検出できる。
 
@@ -164,14 +166,15 @@ python tools/build_pages.py
 - `data/` や `*.numbers`、API パスワードをコミットする（`.gitignore` 済み。リポジトリは公開の可能性がある）。
 - `Script.html` に `google.script.run` 以外のサーバー呼び出し手段を持ち込む（両 UI の互換が崩れる）。
 - `Flights` シートの列順・見出しを Schema.gs と別に手で変える。
-- 帳票シート `飛行日誌_YYYY-MM` を手編集して正とする（再生成で上書きされる）。
+- 年次シート `飛行日誌_YYYY` を手編集して正とする（次の保存で上書きされる）。
 - 時間を小数時間（7.5h）で保存する。分単位のみ。
 - `Settings` の `carry_forward_*` を無断で変える（累計がすべてずれる）。
 - 実データ（登録記号・便名・氏名・技能証明番号）を外部サービスに送る。
 
 ## 7. 今後の拡張候補（未実装）
 
-- 帳票シートの印刷設定（A4 横、ヘッダー繰り返し）の自動化。
+- 年次シートの印刷設定（A4 横、ヘッダー繰り返し）の自動化。
+- 年次シートの再生成を時間トリガーで非同期化（保存の応答時間が気になる場合）。
 - 90 日 3 回離着陸などのカレンシー警告をヘッダーに表示（`apiRecency` は実装済み、閾値判定は未実装）。
 - ICAO 空港マスターに IATA / 空港名を投入（`Airports` シートの `iata`, `name` は空）。
 - 同乗教育 / 操縦教員時間の入力プリセット。

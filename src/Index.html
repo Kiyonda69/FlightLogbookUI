@@ -14,7 +14,6 @@
   <button data-tab="entry" class="active">入力</button>
   <button data-tab="list">一覧・編集</button>
   <button data-tab="summary">集計</button>
-  <button data-tab="report">帳票 (JCAB)</button>
   <button data-tab="settings">設定・取込</button>
 </nav>
 <main>
@@ -105,28 +104,6 @@
   <div class="card"><h2>型式別 (年)</h2><table id="typeTable"></table></div>
 </section>
 
-<!-- ================= 帳票 ================= -->
-<section class="tab" id="tab-report">
-  <div class="card">
-    <h2>JCAB 飛行日誌ページ生成</h2>
-    <p class="hint">スプレッドシート内に帳票シートを生成します（各月に 項小計 / 前項までの合計 / 合計 付き）。印刷は Google スプレッドシート側で行ってください。</p>
-    <div class="row">
-      <label style="margin:0">月別</label>
-      <input type="month" id="reportMonth" style="width:auto">
-      <button class="btn primary" id="btnReport">生成 (飛行日誌_YYYY-MM)</button>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <label style="margin:0">年別 (1月〜12月を 1 シートに)</label>
-      <input type="number" id="reportYear" min="2000" max="2100" style="width:100px">
-      <button class="btn primary" id="btnYearReport">生成 (飛行日誌_YYYY)</button>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <a id="reportLink" target="_blank" style="display:none">シートを開く ↗</a>
-    </div>
-  </div>
-  <div class="card"><h2>生成済みシート</h2><ul id="reportList" class="hint"></ul></div>
-</section>
-
 <!-- ================= 設定 ================= -->
 <section class="tab" id="tab-settings">
   <div class="card">
@@ -143,6 +120,11 @@
     <p class="hint">Numbers 版から移行する場合は data/carry_forward.json の値。時間は H:MM または分で入力。</p>
     <div class="grid narrow" id="carryGrid"></div>
     <div class="row" style="margin-top:10px"><button class="btn primary" id="btnSaveSettings">設定を保存</button><span class="hint" id="settingsStatus"></span></div>
+  </div>
+  <div class="card">
+    <h2>JCAB 飛行日誌シート</h2>
+    <p class="hint">年ごとのシート「飛行日誌_YYYY」（1月〜12月、各月に 項小計 / 前項までの合計 / 合計）は、レグの追加・編集・削除のたびに自動で更新されます。新しい年の最初のレグを保存すると、その年のシートが作られます。印刷は Google スプレッドシート側で行ってください。</p>
+    <ul id="reportList" class="hint"></ul>
   </div>
   <div class="card">
     <h2>CSV 取込 (data/flights.csv)</h2>

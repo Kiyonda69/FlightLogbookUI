@@ -41,21 +41,40 @@
     return this;
   };
   ['setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment',
-    'setWrap', 'merge', 'setBorder'].forEach(function (m) { Range.prototype[m] = function () { return this; }; });
+    'setWrap', 'setBorder', 'breakApart'].forEach(function (m) { Range.prototype[m] = function () { return this; }; });
+  // Merges are recorded so tests can check that header merges are (re)built.
+  Range.prototype.merge = function () { this.s.merges.push([this.r, this.c, this.nr, this.nc]); return this; };
+  Range.prototype.mergeVertically = function () { for (var j = 0; j < this.nc; j++) this.s.merges.push([this.r, this.c + j, this.nr, 1]); return this; };
+  Range.prototype.breakApart = function () { this.s.merges = []; return this; };
+
+  // A1 "B3:AC20" -> Range
+  function a1ToRange(sheet, a1) {
+    var m = a1.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/);
+    if (!m) throw new Error('bad A1: ' + a1);
+    var col = function (s) { var n = 0; for (var i = 0; i < s.length; i++) n = n * 26 + (s.charCodeAt(i) - 64); return n; };
+    var c1 = col(m[1]), r1 = Number(m[2]), c2 = m[3] ? col(m[3]) : c1, r2 = m[4] ? Number(m[4]) : r1;
+    return new Range(sheet, r1, c1, r2 - r1 + 1, c2 - c1 + 1);
+  }
+  function RangeList(ranges) { this.ranges = ranges; }
+  ['setNumberFormat', 'setFontWeight', 'setBackground', 'setHorizontalAlignment', 'setVerticalAlignment', 'setWrap', 'setBorder']
+    .forEach(function (m) { RangeList.prototype[m] = function () { var a = arguments; this.ranges.forEach(function (r) { r[m].apply(r, a); }); return this; }; });
+  RangeList.prototype.getRanges = function () { return this.ranges; };
 
   var sheetIdSeq = 100;
-  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.id = sheetIdSeq++; }
+  function Sheet(ss, name) { this.ss = ss; this.name = name; this.rows = []; this.formats = {}; this.merges = []; this.maxRows = 1000; this.id = sheetIdSeq++; }
+  Sheet.prototype.getRangeList = function (a1s) { var s = this; return new RangeList(a1s.map(function (a) { return a1ToRange(s, a); })); };
+  Sheet.prototype.insertRowsAfter = function (after, n) { this.maxRows += n; return this; };
   Sheet.prototype.getName = function () { return this.name; };
   Sheet.prototype.getSheetId = function () { return this.id; };
   Sheet.prototype.getLastRow = function () {
     for (var i = this.rows.length - 1; i >= 0; i--) if (this.rows[i].some(function (v) { return v !== '' && v !== undefined && v !== null; })) return i + 1;
     return 0;
   };
-  Sheet.prototype.getMaxRows = function () { return Math.max(1000, this.rows.length); };
+  Sheet.prototype.getMaxRows = function () { return Math.max(this.maxRows, this.rows.length); };
   Sheet.prototype.appendRow = function (r) { this.rows.push(r.slice()); return this; };
   Sheet.prototype.getRange = function (r, c, nr, nc) { return new Range(this, r, c, nr || 1, nc || 1); };
   Sheet.prototype.deleteRow = function (r) { this.rows.splice(r - 1, 1); return this; };
-  Sheet.prototype.clear = function () { this.rows = []; this.formats = {}; return this; };
+  Sheet.prototype.clear = function () { this.rows = []; this.formats = {}; return this; }; // merges survive clear(), as in Sheets
   ['setFrozenRows', 'hideColumns', 'setColumnWidths', 'setColumnWidth'].forEach(function (m) { Sheet.prototype[m] = function () { return this; }; });
 
   function Spreadsheet() { this.sheets = []; }
@@ -70,6 +89,7 @@
   g.__mockPromptText = null; g.__mockAlerts = [];
   g.SpreadsheetApp = {
     getActiveSpreadsheet: function () { return active; },
+    flush: function () {},
     getUi: function () {
       var m = { addItem: function () { return m; }, addToUi: function () {} };
       return {

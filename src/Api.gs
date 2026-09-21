@@ -66,7 +66,10 @@ function apiGetMonth(ym) {
   };
 }
 
-/** Insert one flight. Returns the stored record. */
+/**
+ * Insert one flight. Returns { flight, refreshed } where `refreshed` lists the year sheets
+ * (飛行日誌_YYYY) rebuilt as a consequence — the flight's year and all later years.
+ */
 function apiAddFlight(input) {
   var f = normalizeFlight_(input);
   f.id = Utilities.getUuid();
@@ -75,14 +78,16 @@ function apiAddFlight(input) {
   f.updated_at = f.created_at;
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
+  var refreshed;
   try {
     ss_().getSheetByName(SHEET_FLIGHTS).appendRow(flightToRow_(f));
     upsertMasters_([f]);
+    refreshed = refreshYearSheets_(f.date.substring(0, 4));
   } finally { lock.releaseLock(); }
-  return f;
+  return { flight: f, refreshed: refreshed };
 }
 
-/** Update an existing flight by id. Returns the stored record. */
+/** Update an existing flight by id. Returns { flight, refreshed }. */
 function apiUpdateFlight(input) {
   if (!input || !input.id) throw new Error('id がありません');
   var existing = readAllFlights_().filter(function (x) { return x.id === input.id; })[0];
@@ -94,24 +99,29 @@ function apiUpdateFlight(input) {
   f.updated_at = nowIso_();
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
+  var refreshed;
   try {
     ss_().getSheetByName(SHEET_FLIGHTS)
       .getRange(existing._row, 1, 1, FLIGHT_COLUMNS.length).setValues([flightToRow_(f)]);
     upsertMasters_([f]);
+    var fromYear = existing.date < f.date ? existing.date.substring(0, 4) : f.date.substring(0, 4);
+    refreshed = refreshYearSheets_(fromYear);
   } finally { lock.releaseLock(); }
-  return f;
+  return { flight: f, refreshed: refreshed };
 }
 
-/** Delete a flight by id. */
+/** Delete a flight by id. Returns { deleted, refreshed }. */
 function apiDeleteFlight(id) {
   var existing = readAllFlights_().filter(function (x) { return x.id === id; })[0];
   if (!existing) throw new Error('該当レコードが見つかりません: ' + id);
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
+  var refreshed;
   try {
     ss_().getSheetByName(SHEET_FLIGHTS).deleteRow(existing._row);
+    refreshed = refreshYearSheets_(existing.date.substring(0, 4));
   } finally { lock.releaseLock(); }
-  return { deleted: id };
+  return { deleted: id, refreshed: refreshed };
 }
 
 /* ---------- Settings ---------- */
@@ -146,12 +156,18 @@ function apiSaveSettings(obj) {
   Object.keys(SETTINGS_DEFAULTS).forEach(function (k) {
     if (obj[k] !== undefined) put(k, obj[k]);
   });
+  var touchedTotals = false;
   if (obj.carry_forward) {
     TOTAL_KEYS.forEach(function (k) {
       if (obj.carry_forward[k] === undefined) return;
       var v = (k === 'takeoffs' || k === 'landings') ? Number(obj.carry_forward[k]) || 0 : parseMinutes_(obj.carry_forward[k]);
       put('carry_forward_' + k, v, 'システム導入前の累計 ' + labelOf_(k));
+      touchedTotals = true;
     });
+  }
+  // Carry-forward, pilot name and licence number all appear on the year sheets → rebuild them all.
+  if (touchedTotals || obj.pilot_name !== undefined || obj.licence_no !== undefined || obj.time_basis !== undefined) {
+    refreshYearSheets_(null);
   }
   return getSettings_();
 }

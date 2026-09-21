@@ -55,7 +55,8 @@ function apiImportCsv(csvText, opts) {
     sh.getRange(sh.getLastRow() + 1, 1, toAppend.length, FLIGHT_COLUMNS.length).setValues(toAppend);
     upsertMasters_(toAppend.map(rowToFlight_));
   }
-  return { inserted: toAppend.length, updated: updated, skipped: skipped, errors: errors };
+  var refreshed = (toAppend.length || updated) ? refreshYearSheets_(null) : [];
+  return { inserted: toAppend.length, updated: updated, skipped: skipped, errors: errors, refreshed: refreshed };
 }
 
 function dupKey_(f) {
