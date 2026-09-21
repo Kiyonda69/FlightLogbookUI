@@ -20,7 +20,9 @@ pip install numbers-parser
 python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers"
 ```
 
-`data/flights.csv`（860 レグ）と `data/carry_forward.json` ができます。
+`data/flights.csv`（全レグ）と `data/carry_forward.json`（CSV 先頭より前の累計 = 2017年8月の「前項までの合計」）ができます。
+Numbers 側で追記した後に再実行すれば、CSV は差分を含む全件になります。UI の CSV 取込は重複をスキップするので、そのまま再取込すれば新しいレグだけ追加されます。
+`carry_forward.json` は CSV を全件取り込む前提の値なので、Numbers を更新しても変わりません。
 `data/` は個人の飛行記録のため git 管理外（`.gitignore`）です。PC を替えたり再クローンした場合は、このコマンドを再実行するか `data/` を手でコピーしてください。
 
 ### 2. Google スプレッドシートと Apps Script を作る

@@ -8,7 +8,9 @@ Output:
 
 Usage:
   pip install numbers-parser
-  python tools/export_numbers.py "FLIGHT LOGBOOK.numbers"
+  python tools/export_numbers.py "../FLIGHT LOGBOOK 2.numbers"              -> data/flights.csv, data/carry_forward.json
+  python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers" --tag test     -> data/flights_test.csv, data/carry_forward_test.json
+                                                                              (fixture used by tools/test_logic.js)
 """
 import csv, json, re, sys, datetime, warnings
 from pathlib import Path
@@ -75,7 +77,7 @@ def parse_day(v):
     return int(s)
 
 
-def main(path):
+def main(path, tag=""):
     doc = Document(path)
     flights, carries = [], {}
     for sheet in doc.sheets:
@@ -121,13 +123,16 @@ def main(path):
     first = flights[0]["date"]
     carry = carries[(int(first[:4]), int(first[5:7]))]
     out = Path("data"); out.mkdir(exist_ok=True)
-    with open(out / "flights.csv", "w", newline="", encoding="utf-8") as f:
+    suffix = ("_" + tag) if tag else ""
+    with open(out / f"flights{suffix}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader(); w.writerows(flights)
-    json.dump(carry, open(out / "carry_forward.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-    print(f"flights: {len(flights)}  first={flights[0]['date']} last={flights[-1]['date']}")
+    json.dump(carry, open(out / f"carry_forward{suffix}.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    print(f"flights{suffix}.csv: {len(flights)} legs  first={flights[0]['date']} last={flights[-1]['date']}")
     print("carry_forward:", carry)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "FLIGHT LOGBOOK.numbers")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    tag = sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv else ""
+    main(args[0] if args else "../FLIGHT LOGBOOK.numbers", tag)

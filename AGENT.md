@@ -131,7 +131,10 @@ pip install numbers-parser
 python tools/export_numbers.py "FLIGHT LOGBOOK.numbers"
 
 # 2. サーバーロジックの回帰テスト（Apps Script 不要）
-node tools/test_logic.js        # ALL PASSED が出ること。取込後の合計が Numbers の 2024/10 合計と一致することを検証
+node tools/test_logic.js        # ALL PASSED が出ること。期待値は「初回 Numbers (860 レグ, 〜2024-10)」の合計行に固定
+#   → data/flights_test.csv / data/carry_forward_test.json（git 管理外の固定フィクスチャ）を使う。無ければ次で再生成:
+python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers" --tag test
+#   運用データ (data/flights.csv) は "../FLIGHT LOGBOOK 2.numbers" 以降の最新エクスポートで、テストには使わない
 
 # 3. UI をローカルで動かす（google.script.run をモックに差し替え、CSV を自動投入）
 python dev/serve.py 8765        # → http://localhost:8765/        HtmlService 版

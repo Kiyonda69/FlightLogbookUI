@@ -90,9 +90,11 @@ function apiImportCarryForward(jsonText) {
   var obj;
   try { obj = JSON.parse(jsonText); } catch (e) { throw new Error('JSON を解釈できません: ' + e.message); }
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('JSON はオブジェクト { "block": 分, ... } である必要があります');
-  var unknown = Object.keys(obj).filter(function (k) { return TOTAL_KEYS.indexOf(k) < 0; });
+  var unknown = Object.keys(obj).filter(function (k) { return TOTAL_KEYS.indexOf(k) < 0 && k.charAt(0) !== '_'; }); // "_note" etc. are ignored
   if (unknown.length) throw new Error('不明なキー: ' + unknown.join(', '));
-  return apiSaveSettings({ carry_forward: obj });
+  var clean = {};
+  TOTAL_KEYS.forEach(function (k) { if (obj[k] !== undefined) clean[k] = obj[k]; });
+  return apiSaveSettings({ carry_forward: clean });
 }
 
 function carrySummary_(settings) {

@@ -31,9 +31,15 @@ check('parseDateStr', ctx.parseDateStr_('2024/6/3'), '2024-06-03');
 
 // --- setup + import
 check('setupSpreadsheet', ctx.setupSpreadsheet(), 'OK');
-var carry = JSON.parse(fs.readFileSync(path.join(root, 'data/carry_forward.json'), 'utf8'));
+// Fixture: the ORIGINAL export of FLIGHT LOGBOOK.numbers (860 legs, through 2024-10). The expected
+// totals below are that file's 2024/10 合計 row. Regenerate with:
+//   python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers" --tag test
+var CSV_FILE = fs.existsSync(path.join(root, 'data/flights_test.csv')) ? 'data/flights_test.csv' : 'data/flights.csv';
+var CARRY_FILE = fs.existsSync(path.join(root, 'data/carry_forward_test.json')) ? 'data/carry_forward_test.json' : 'data/carry_forward.json';
+console.log('fixture:', CSV_FILE, '+', CARRY_FILE);
+var carry = JSON.parse(fs.readFileSync(path.join(root, CARRY_FILE), 'utf8'));
 ctx.apiImportCarryForward(JSON.stringify(carry));
-var csv = fs.readFileSync(path.join(root, 'data/flights.csv'), 'utf8');
+var csv = fs.readFileSync(path.join(root, CSV_FILE), 'utf8');
 var res = ctx.apiImportCsv(csv, { source: 'test' });
 check('import errors', res.errors, []);
 check('import inserted 860', res.inserted, 860);
@@ -180,7 +186,7 @@ check('2018 legs', ys.months.reduce(function (a, x) { return a + x.count; }, 0),
 check('recency shape', typeof ctx.apiRecency(90).count, 'number');
 
 // --- carry-forward import entry points runnable without arguments
-var carryJson = fs.readFileSync(path.join(root, 'data/carry_forward.json'), 'utf8');
+var carryJson = fs.readFileSync(path.join(root, CARRY_FILE), 'utf8');
 ctx.apiSaveSettings({ carry_forward: { block: 0, takeoffs: 0 } });
 check('carry zeroed', ctx.apiBootstrap().cumulative.block, expected.block - carry.block);
 var drvErr = null; try { ctx.importCarryForwardFromDrive(); } catch (e) { drvErr = e.message; }

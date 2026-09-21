@@ -7,6 +7,5 @@ node_modules/
 
 # Personal flight records — keep out of a public repository.
 # Remove these two lines only if the repository is private and you want the data versioned.
-data/flights.csv
-data/carry_forward.json
+data/*
 *.numbers
