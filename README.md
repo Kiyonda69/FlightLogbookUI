@@ -1,4 +1,4 @@
-# FlightLogbook — JCAB 飛行日誌 on Google Sheets
+# FlightLogbookUI — JCAB 飛行日誌 on Google Sheets
 
 Apple Numbers で管理していた飛行日誌を、Google スプレッドシート + Apps Script の Web UI に移行するプロジェクトです。
 設計方針・データ仕様は [AGENT.md](AGENT.md) を参照してください。
@@ -67,7 +67,7 @@ Apps Script の HtmlService 画面の代わりに、同じ UI を GitHub Pages�
 
 4. GitHub のリポジトリ「Settings > Pages > Build and deployment」で
    Source = **Deploy from a branch**, Branch = **main**, Folder = **/docs** を選んで保存。
-5. 数分後に `https://<ユーザー名>.github.io/FlightLogbook/` を開き、上部の接続設定に
+5. 数分後に `https://<ユーザー名>.github.io/FlightLogbookUI/` を開き、上部の接続設定に
    ウェブアプリ URL（`…/exec`）とトークンを入力して「接続」。設定はその端末のブラウザ（localStorage）にだけ保存されます。
 
 注意:

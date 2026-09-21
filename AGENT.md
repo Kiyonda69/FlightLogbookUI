@@ -1,4 +1,4 @@
-# AGENT.md — FlightLogbook (JCAB 飛行日誌 on Google Sheets)
+# AGENT.md — FlightLogbookUI (JCAB 飛行日誌 on Google Sheets)
 
 このファイルは AI エージェント / 開発者向けのプロジェクト指針です。作業前に必ず読むこと。
 
@@ -10,12 +10,12 @@
   2. **GitHub Pages 版** — `docs/index.html`（`tools/build_pages.py` の生成物）。`google.script.run` を fetch のシムに差し替え、Apps Script の `doPost` JSON API を呼ぶ。
 - 旧データは Apple Numbers ファイル `../FLIGHT LOGBOOK.numbers`（リポジトリの 1 階層上、2017-08 〜 2024-10、860 レグ）。`tools/export_numbers.py` で CSV 化し、Web UI から取り込む。
 - 利用者は B777 (B772 / B773 / B77W) 乗務のエアラインパイロット 1 名。時刻は **UTC**。
-- GitHub: `https://github.com/Kiyonda69/FlightLogbook`（main ブランチ、Pages は `/docs`）。
+- GitHub: `https://github.com/Kiyonda69/FlightLogbookUI`（main ブランチ、Pages は `/docs`）。
 
 ## 2. ディレクトリ構成
 
 ```
-FlightLogbook/                      ← git リポジトリ（実体は OneDrive/Documents/FlightLogbook/FlightLogbook）
+FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive/Documents/FlightLogbook/FlightLogbookUI）
 ├── AGENT.md                 このファイル
 ├── README.md                利用者向けセットアップ手順
 ├── LICENSE                  MIT（GitHub 生成）
