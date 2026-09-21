@@ -282,7 +282,7 @@ check('batch: empty rejected', /保存するレグ/.test(emptyBatch || ''), true
 ctx.apiGetMonth('2025-04').flights.concat(ctx.apiGetMonth('2024-12').flights.filter(function (f) { return f.flight_no === 'JL3'; })).forEach(function (f) { ctx.apiDeleteFlight(f.id); });
 check('batch: cleanup restores cumulative', ctx.apiBootstrap().cumulative, before);
 
-// --- QPR flag → Flights column, qualification panel, checklist sheet rows 29-36
+// --- QPR flag → Flights column, qualification panel, checklist ROUTE CHK column
 var qprLeg = function (d, fn, qpr) { return { date: d, aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'KLAX', dep_time: '01:00', arr_time: '10:00', flight_no: fn, takeoffs: 1, landings: 1, block: 540, pic: 540, pic_xc: 540, crew: 'N1/0', qpr: qpr }; };
 var q1 = ctx.apiAddFlight(qprLeg('2025-05-03', 'JL62', true)).flight;
 var q2 = ctx.apiAddFlight(qprLeg('2025-11-20', 'JL16', '1')).flight;
@@ -294,12 +294,12 @@ var qq = ctx.apiQualification('2025-12-01').qpr;
 check('qpr: FY2025 count 2, last = 2025-11-20 JL16', [qq.fy, qq.count, qq.last.date, qq.last.flight_no, qq.status], [2025, 2, '2025-11-20', 'JL16', 'ok']);
 check('qpr: FY2024 none → warn', ctx.apiQualification('2025-03-31').qpr.status, 'warn');
 var qsh = ctx.__mockSpreadsheet.getSheetByName(ctx.QUAL_SHEET);
-check('qual sheet: QPR block title (row 29)', qsh.rows[28][0].indexOf('QPR 実施フライト') === 0, true);
-check('qual sheet: 前回 QPR (row 31) = latest flagged leg', [qsh.rows[30][0], qsh.rows[30][1], qsh.rows[30][2]], ['前回 QPR', '2026年 4月 2日', '2026/04/02 JL10 RJTT-KLAX']);
-var fyRows = {}; for (var qi = 0; qi < 5; qi++) fyRows[qsh.rows[31 + qi][0]] = [qsh.rows[31 + qi][1], qsh.rows[31 + qi][2]];
-check('qual sheet: 2025年度 row lists both QPR legs', fyRows['2025年度'], ['2 回', '2025/05/03 JL62 RJTT-KLAX、 2025/11/20 JL16 RJTT-KLAX']);
-check('qual sheet: 2026年度 row lists one', fyRows['2026年度'], ['1 回', '2026/04/02 JL10 RJTT-KLAX']);
-check('qual sheet: QPR rows keep the C..J merge on the fast path', qsh.merges.length, 2 + 4 + 8 + 1 + 7);
+check('qual sheet: QPR legs fill ROUTE CHK 前回実施日 (row 5, col F)', qsh.rows[4][5], '2026年 4月 2日');
+check('qual sheet: ROUTE CHK 基準月 follows the latest QPR (4月)', qsh.rows[2][5], '4月');
+var routeFy = {}; for (var qi = 5; qi < 10; qi++) routeFy[qsh.rows[qi][0]] = qsh.rows[qi][5];
+check('qual sheet: 2025年度 ROUTE CHK = latest QPR of that FY', routeFy['2025年度\n実施日'], '2025年 11月 20日');
+check('qual sheet: 2026年度 ROUTE CHK', routeFy['2026年度\n実施日'], '2026年 4月 2日');
+check('qual sheet: still the 27-row CAP form (no extra block)', [ctx.QUAL_ROWS, qsh.rows.length <= 27 || qsh.rows.slice(27).every(function (r) { return r.every(function (c) { return c === '' || c === undefined; }); })], [27, true]);
 [q1, q2, q3, q4].forEach(function (f) { ctx.apiDeleteFlight(f.id); });
 check('qpr: cleanup', ctx.apiBootstrap().cumulative, before);
 // header migration: a sheet created before the crew column gets the header appended
@@ -343,7 +343,7 @@ var fy0 = (function () { var d = new Date(); return (d.getMonth() + 1 >= 4 ? d.g
 check('qual sheet: fiscal-year rows labelled FY-1..FY+3', [qs.rows[5][0], qs.rows[9][0]], [fy0 + '年度\n実施日', (fy0 + 4) + '年度\n実施日']);
 check('qual sheet: 63歳 rows 8-10 fixed "－"', [qs.rows[7][7], qs.rows[8][7], qs.rows[9][7]], ['－', '－', '－']);
 check('qual sheet: notes block', [qs.rows[16][0], qs.rows[17][1], qs.rows[26][0]], ['CACK', '技能基準月と同月', '特定操縦技能\n審査/確認']);
-check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows, A19:A20, 7 QPR rows)', qs.merges.length, 2 + 4 + 8 + 1 + 7);
+check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows, A19:A20)', qs.merges.length, 2 + 4 + 8 + 1);
 check('qual sheet: column widths set', Object.keys(qs.colWidths).length, 10);
 var qMerges = qs.merges.length, qBorders = qs.borderCalls.length;
 ctx.apiSaveSettings({ department: '777運航乗員部', employee_no: '123456', exp_english: '2027-03-31, 2030-01-01', dates_route: '2024-06-01', exp_pe: '2026-12-15', dates_pe: '2026-06-10' });

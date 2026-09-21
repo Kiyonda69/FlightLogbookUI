@@ -131,7 +131,7 @@ function apiQualification(today) {
     return { code: t.code, label: t.label, last: lastDate, baseMonth: base, windowFrom: from, windowUntil: until, status: status };
   });
 
-  // QPR flights (leg flag) — this fiscal year (April-March) and the latest one
+  // QPR flights (leg flag) = ROUTE CHK entries — this fiscal year (April-March) and the latest one
   var fy = fyOf_(today);
   var qprAll = all.filter(function (f) { return f.qpr === '1' && f.date <= today; });
   var qprFy = qprAll.filter(function (f) { return fyOf_(f.date) === fy; });

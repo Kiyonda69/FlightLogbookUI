@@ -547,8 +547,8 @@ function loadQualification() {
     });
     if (q.qpr) {
       var lq = q.qpr.last;
-      h += qItem(q.qpr.status, 'QPR (' + q.qpr.fy + '年度)', q.qpr.count + ' 回',
-        (lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '記録なし') + ' / 入力フォームの「QPR フライト」にチェックしたレグ');
+      h += qItem(q.qpr.status, 'ROUTE CHK / QPR (' + q.qpr.fy + '年度)', q.qpr.count + ' 回',
+        (lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '記録なし') + ' / 入力フォームで QPR にチェックしたレグ（チェックリストの ROUTE CHK 欄）');
     }
     q.expiries.forEach(function (e) {
       h += qItem(e.status, e.label, e.date ? '有効期限 ' + e.date : '未設定',

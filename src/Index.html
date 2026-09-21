@@ -60,7 +60,7 @@
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
       <div><label>記入する飛行時間</label><input class="dur" name="block" placeholder="H:MM"></div>
-      <div><label>QPR</label><label class="chk" title="チェックすると資格要件チェックリスト シートの QPR 欄（年度別）に反映されます"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
+      <div><label>QPR</label><label class="chk" title="チェックすると資格要件チェックリスト シートの ROUTE CHK 欄（前回実施日・年度別）に反映されます"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
     </div>
 
     <details>
@@ -135,7 +135,7 @@
   </div>
   <div class="card">
     <h2>資格要件チェックリスト</h2>
-    <p class="hint">スプレッドシートの「資格要件チェックリスト」シート（CAP 様式）は、ここで入力した内容と飛行日誌の記録（飛行内容が M12 / M21 / M22 / CACK / M11 / ROUTE / DIT のレグ）から自動で更新されます。複数の日付はカンマ区切り（例: 2025-04-15, 2026-04-10）。集計タブの「資格要件」にも残日数と警告が出ます。</p>
+    <p class="hint">スプレッドシートの「資格要件チェックリスト」シート（CAP 様式）は、ここで入力した内容と飛行日誌の記録（飛行内容が M12 / M21 / M22 / CACK / M11 / ROUTE / DIT のレグ、および QPR にチェックしたレグ → ROUTE CHK）から自動で更新されます。複数の日付はカンマ区切り（例: 2025-04-15, 2026-04-10）。集計タブの「資格要件」にも残日数と警告が出ます。</p>
     <div class="grid" id="expGrid"></div>
   </div>
   <div class="card">

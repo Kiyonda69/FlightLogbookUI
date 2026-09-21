@@ -9,22 +9,20 @@
  *                                  base_route, base_dit; PE/PEA: month of the expiry dates
  *   実施日 (rows 5-10)             M12 / M21 / M22: flights whose 飛行内容 starts with the code
  *                                  CACK: 飛行内容 "CACK" or "M11" + Settings dates_cack
- *                                  ROUTE CHK / DIT / 63歳付加訓練 / PE / PEA: Settings dates_* (comma lists)
+ *                                  ROUTE CHK: legs flagged QPR (qpr column) + 飛行内容 "ROUTE…" + Settings dates_route
+ *                                  DIT / 63歳付加訓練 / PE / PEA: Settings dates_* (comma lists)
  *   有効期限 (rows 5-10, 12-15)     Settings exp_pe, exp_pea, exp_english (≤2), exp_competency (≤5),
  *                                  exp_passport, exp_visa
  *   row 5 = 前回実施日 (latest), rows 6-10 = 年度 (FY-1 .. FY+3, April-March) 実施日
- *   rows 29-36 (below the CAP form)   QPR flights: legs flagged QPR in the logbook, 前回 + per 年度 (FY-1 .. FY+3)
  *
  * Layout: values are written with ONE setValues; styles/merges/widths only when the sheet is new,
  * forced, or QUAL_DESIGN_VERSION changed (remembered in Script Properties).
  */
 
 var QUAL_SHEET = '資格要件チェックリスト';
-var QUAL_DESIGN_VERSION = 2;   // 2: QPR block (rows 29-36)
+var QUAL_DESIGN_VERSION = 3;   // 3: QPR moved into the ROUTE CHK column (extra block removed)
 var QUAL_LAYOUT_KEY = 'qual_layout';
-var QUAL_FORM_ROWS = 27;                 // the CAP form itself (A1:J27)
-var QUAL_QPR_ROW = 29;                   // sheet row of the QPR block title (1-based)
-var QUAL_ROWS = QUAL_QPR_ROW + 7, QUAL_COLS = 10;   // title, header, 前回, 5 fiscal years
+var QUAL_ROWS = 27, QUAL_COLS = 10;      // the CAP form itself (A1:J27)
 var QUAL_GREY = '#c0c0c0';
 var QUAL_FONT = 'Noto Sans JP';
 var QUAL_DATE_BLANK = '        年       月       日';
@@ -32,9 +30,7 @@ var QUAL_EXP_BLANK = '有効期限　　 　年　　 月　 　日\n実施日�
 
 // Excel column widths (chars) → px, row heights (pt) → px
 var QUAL_COL_PX = [231, 148, 96, 96, 96, 96, 96, 184, 213, 96];
-var QUAL_ROW_PX = [50, 47, 36, 36, 43, 43, 38, 43, 44, 41, 36, 29, 29, 29, 29, 52, 28, 28, 28, 28, 89, 55, 28, 28, 28, 63, 77,
-  14, 30, 28, 34, 34, 34, 34, 34, 34];   // rows 28-36: gap, QPR title, header, 前回, FY-1..FY+3 (FY rows grow with the list)
-var QUAL_QPR_LINE_PX = 20;
+var QUAL_ROW_PX = [50, 47, 36, 36, 43, 43, 38, 43, 44, 41, 36, 29, 29, 29, 29, 52, 28, 28, 28, 28, 89, 55, 28, 28, 28, 63, 77];
 
 var QUAL_NOTES = [
   ['CACK', '昇格技能審査、型式移行技能審査、復帰技能審査に合格した日の属する月。'],
@@ -83,6 +79,9 @@ function slots_(list, n) { // '(1) 2026 / 03 / 31 　 (2)    /    /   '
   return '　' + out.join('　　');
 }
 
+/** Dates of legs flagged QPR (the QPR checkbox) — they are ROUTE CHK entries on the checklist. */
+function qprDates_(all) { return all.filter(function (f) { return f.qpr === '1'; }).map(function (f) { return f.date; }).sort(); }
+
 /** Dates of training / check events found in the logbook (飛行内容 starting with a code). */
 function logbookEventDates_(all, codes) {
   var out = [];
@@ -104,7 +103,7 @@ function qualSheetData_(all, today) {
     { key: 'm12', dates: logbookEventDates_(all, ['M12']) },
     { key: 'm21', dates: logbookEventDates_(all, ['M21']) },
     { key: 'm22', dates: logbookEventDates_(all, ['M22']) },
-    { key: 'route', dates: dateList_(st.dates_route).concat(logbookEventDates_(all, ['ROUTE'])).sort() },
+    { key: 'route', dates: dateList_(st.dates_route).concat(logbookEventDates_(all, ['ROUTE']), qprDates_(all)).sort() },   // QPR = ROUTE CHK
     { key: 'dit', dates: dateList_(st.dates_dit).concat(logbookEventDates_(all, ['DIT'])).sort() },
     { key: 'age63', dates: dateList_(st.dates_age63) },
     { key: 'pe', dates: dateList_(st.dates_pe), exp: dateList_(st.exp_pe) },
@@ -120,13 +119,9 @@ function qualSheetData_(all, today) {
       pe: monthLabel_(latest_(cols[7].exp)), pea: monthLabel_(latest_(cols[8].exp)) },
     cols: cols,
     english: dateList_(st.exp_english), competency: dateList_(st.exp_competency),
-    passport: dateList_(st.exp_passport), visa: dateList_(st.exp_visa),
-    qpr: all.filter(function (f) { return f.qpr === '1'; }).map(function (f) { return { date: f.date, flight_no: f.flight_no, dep: f.dep, arr: f.arr }; })
+    passport: dateList_(st.exp_passport), visa: dateList_(st.exp_visa)
   };
 }
-function qprText_(f) { return slashDate_(f.date).replace(/ /g, '') + ' ' + f.flight_no + ' ' + f.dep + '-' + f.arr; }
-/** Lines needed for a fiscal-year QPR cell (3 flights per line at the merged C..J width). */
-function qprLines_(n) { return Math.max(1, Math.ceil(n / 3)); }
 
 function apiQualificationSheetData() { return qualSheetData_(); }
 
@@ -172,24 +167,7 @@ function planQualSheet_(data) {
   // row 16 + notes 17-27
   g[15][0] = '各訓練・審査の基準月設定、および　その他の注意事項';
   QUAL_NOTES.forEach(function (n, i) { g[16 + i][0] = n[0]; g[16 + i][1] = n[1]; });
-  // QPR block (rows 29-36): title, header, 前回, one row per fiscal year
-  var q = QUAL_QPR_ROW - 1;
-  g[q][0] = 'QPR 実施フライト（飛行日誌で QPR にチェックしたレグから自動）';
-  g[q + 1][0] = '区分'; g[q + 1][1] = '実施回数'; g[q + 1][2] = '実施日 / 便名 / 区間';
-  var lastQ = data.qpr.length ? data.qpr[data.qpr.length - 1] : null;
-  g[q + 2][0] = '前回 QPR'; g[q + 2][1] = lastQ ? jpDate_(lastQ.date) : QUAL_DATE_BLANK; g[q + 2][2] = lastQ ? qprText_(lastQ) : '';
-  data.fiscalYears.forEach(function (fy, i) {
-    var list = data.qpr.filter(function (f) { return fyOf_(f.date) === fy; });
-    g[q + 3 + i][0] = fy + '年度'; g[q + 3 + i][1] = list.length ? list.length + ' 回' : '－'; g[q + 3 + i][2] = list.map(qprText_).join('、 ');
-  });
   return g;
-}
-/** Fiscal-year QPR rows grow with the number of flights (both fast path and relayout). */
-function sizeQprRows_(sh, data) {
-  data.fiscalYears.forEach(function (fy, i) {
-    var n = data.qpr.filter(function (f) { return fyOf_(f.date) === fy; }).length;
-    sh.setRowHeight(QUAL_QPR_ROW + 3 + i, Math.max(QUAL_ROW_PX[QUAL_QPR_ROW + 2 + i], 8 + QUAL_QPR_LINE_PX * qprLines_(n)));
-  });
 }
 
 /* ---------- builder ---------- */
@@ -209,7 +187,6 @@ function rebuildQualSheet_(all, force) {
 
   if (!relayout) {
     sh.getRange(1, 1, QUAL_ROWS, QUAL_COLS).setValues(grid);
-    sizeQprRows_(sh, data);
     sh.getRange(1, 12).setValue('更新 ' + data.today);
     SpreadsheetApp.flush();
     return { sheetName: QUAL_SHEET, relayout: false };
@@ -239,15 +216,6 @@ function rebuildQualSheet_(all, force) {
   sh.getRange(16, 1).setFontWeight('bold');
   sh.getRange(17, 1, 11, 1).setHorizontalAlignment('center').setWrap(true);
   sh.getRange(17, 2, 11, 1).setFontSize(10).setHorizontalAlignment('left').setWrap(true);
-  // QPR block
-  var qr = QUAL_QPR_ROW;
-  sh.getRange(qr, 1).setFontWeight('bold');
-  sh.getRange(qr + 1, 1, 1, QUAL_COLS).setFontWeight('bold').setHorizontalAlignment('center').setBackground(QUAL_GREY);
-  sh.getRange(qr + 2, 1, 6, 1).setFontWeight('bold').setHorizontalAlignment('center').setBackground(QUAL_GREY);
-  sh.getRange(qr + 2, 2, 6, 1).setHorizontalAlignment('right');
-  sh.getRange(qr + 2, 3, 6, 1).setFontSize(10).setHorizontalAlignment('left').setWrap(true);
-  sh.getRange(qr + 1, 1, 7, QUAL_COLS).setBorder(true, true, true, true, true, true, '#000000', S.SOLID);
-  sh.getRange(qr + 1, 1, 7, QUAL_COLS).setBorder(true, true, true, true, null, null, '#000000', S.SOLID_MEDIUM);
 
   // borders: table (rows 2-10) thin grid + medium frame; rows 12-16 medium horizontals; notes medium grid
   sh.getRange(2, 1, 9, QUAL_COLS).setBorder(true, true, true, true, true, true, '#000000', S.SOLID);
@@ -264,12 +232,10 @@ function rebuildQualSheet_(all, force) {
   [17, 18, 21, 22, 23, 26, 27].forEach(function (r) { sh.getRange(r, 2, 1, 9).merge(); });
   sh.getRange(19, 2, 2, 9).merge();  // B19:J20
   sh.getRange(19, 1, 2, 1).merge();  // A19:A20 (M21 / M22 share the note)
-  for (var qm = 1; qm <= 7; qm++) sh.getRange(QUAL_QPR_ROW + qm, 3, 1, 8).merge();   // QPR header + 6 rows: C..J
 
   // sizes
   QUAL_COL_PX.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   QUAL_ROW_PX.forEach(function (h, i) { sh.setRowHeight(i + 1, h); });
-  sizeQprRows_(sh, data);
   sh.getRange(1, 12).setValue('更新 ' + data.today).setFontSize(8).setFontColor('#9aa0a6');
   sh.setFrozenRows(0);
   props.setProperty(QUAL_LAYOUT_KEY, stamp);
