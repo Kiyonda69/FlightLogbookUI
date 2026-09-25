@@ -223,6 +223,8 @@ python tools/build_pages.py
 2. `powershell -ExecutionPolicy Bypass -File tools\setup_clasp.ps1` を実行 — clasp v3 の導入、`.clasp.json.example` → `.clasp.json`、未ログインなら `clasp login`、最後に `clasp status`。`src/` の **15 ファイルすべてが Tracked** であることを必ず確認する。
 3. `clasp login` の許可と「Google Apps Script API」のオン（https://script.google.com/home/usersettings、アカウントごとに 1 回）はブラウザでの利用者本人の操作。エージェントは代行しない（URL を示して待つ）。
 
+- 本番スプレッドシート「FlightLogbook」: https://docs.google.com/spreadsheets/d/1hl-ouCAvLZtbNkheQVXAQ-W8PaDdj55FDnoyQIpvWx0/edit （年次シート `飛行日誌_YYYY`・Flights・資格要件チェックリストの目視確認用。共有設定は非公開のまま。URL だけでは開けない）。Apps Script エディタ: https://script.google.com/d/1tgx8rE5Od7sSl9AUSw11YbdtH00bSWBp3LbgFrsfd4pfPMlyPRe5e4vV/edit 。Pages 版: https://kiyonda69.github.io/FlightLogbookUI/
+- 本番での書き込み確認は、飛行内容 `SIMTEST` などの識別できるテスト用レグで行い、確認後に削除する（2026-09-25 に SIM 離着陸回数をこの方法で確認済み）。API パスワードはどこにも記録しない（利用者がブラウザで入力し、localStorage に保持）。
 - 対象: スプレッドシートに紐づいた（コンテナバインド）プロジェクト。scriptId `1tgx8rE5Od7sSl9AUSw11YbdtH00bSWBp3LbgFrsfd4pfPMlyPRe5e4vV`（`.clasp.json.example` に記載。秘密ではない）。アカウント `kiyonda69@gmail.com`。バインド型なので `clasp list` には出ない。
 - 反映: `tools\clasp_deploy.ps1` = `clasp push --force` + Pages 用デプロイ（`pages.config.json` の `apiUrl` の ID）を新バージョンに更新（URL は不変）。`-PushOnly` で push のみ。push だけでスプレッドシート（メニュー・onEdit）と HtmlService 版は新コードになるが、**Pages 版の `/exec` は固定バージョンなのでデプロイ更新まで旧コード**。ロールバックは `clasp versions` → `clasp deploy -i <ID> -V <番号>`。
 - `--force` が必要: clasp 3 は `appsscript.json` の上書きを対話で確認し、端末が無いと「Skipping push.」で何も送らない。
