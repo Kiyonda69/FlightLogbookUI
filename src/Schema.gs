@@ -49,7 +49,9 @@ var FLIGHT_COLUMNS = [
   { key: 'created_at',      kind: 'meta', label: 'Created' },
   { key: 'updated_at',      kind: 'meta', label: 'Updated' },
   { key: 'crew',            kind: 'text', label: '編成' },  // "M2/0" = pattern id / my index (see CrewRules.html); "SPLIT", "SIM" or blank
-  { key: 'qpr',             kind: 'text', label: 'QPR' }    // '1' when the leg was a QPR flight (資格要件チェックリストの QPR 欄に反映), else ''
+  { key: 'qpr',             kind: 'text', label: 'QPR' },   // '1' when the leg was a QPR flight (資格要件チェックリストの QPR 欄に反映), else ''
+  { key: 'sim_takeoffs',    kind: 'int',  label: 'SIM 離陸' }, // SIM/FTD session take-offs: NOT in 離陸 totals, "(n)" on the report
+  { key: 'sim_landings',    kind: 'int',  label: 'SIM 着陸' }  // SIM/FTD session landings: NOT in 着陸 totals, "(n)" on the report
 ];
 
 /** Keys that are summed for 項小計 / 前項までの合計 / 合計. Order = report column order. */
@@ -59,6 +61,15 @@ var TOTAL_KEYS = [
   'sic', 'dual', 'sic_xc', 'sic_night',
   'hood', 'ifr', 'sim', 'ftd', 'instructor', 'flight_engineer', 'other'
 ];
+
+/**
+ * Simulator take-off / landing counts. They are summed SEPARATELY: never added to takeoffs /
+ * landings, not part of TOTAL_KEYS / carry_forward. The report prints them in parentheses in the
+ * 離着陸回数 cells — a SIM leg as "(1)", a total row as "2043 (12)".
+ * SIM_COUNT_OF maps each real count key to its simulator counterpart.
+ */
+var SIM_COUNT_KEYS = ['sim_takeoffs', 'sim_landings'];
+var SIM_COUNT_OF = { takeoffs: 'sim_takeoffs', landings: 'sim_landings' };
 
 /** JCAB 飛行日誌 two-row header used by the report sheet (29 columns, A..AC). */
 var REPORT_HEADER_TOP = [

@@ -117,6 +117,12 @@ function normalizeFlight_(input) {
   f.landings = Number(f.landings) || 0;
   TOTAL_KEYS.forEach(function (k) { if (k !== 'takeoffs' && k !== 'landings') f[k] = parseMinutes_(f[k]); });
   var isDevice = (f.sim > 0 || f.ftd > 0) && !f.block; // simulator / FTD session, not a flight
+  SIM_COUNT_KEYS.forEach(function (k) {
+    var n = Number(f[k]) || 0;
+    if (n < 0 || n !== Math.floor(n)) throw new Error(labelOf_(k) + ' は 0 以上の整数で入力してください');
+    f[k] = n;
+  });
+  if ((f.sim_takeoffs || f.sim_landings) && !isDevice) throw new Error('SIM の離着陸回数は模擬飛行装置 / 飛行訓練装置の記録（飛行時間 0）にだけ入力できます');
   if (!f.aircraft_type) throw new Error('航空機の型式は必須です');
   if (!f.registration && !isDevice) throw new Error('登録記号は必須です (SIM/FTD の場合は模擬飛行装置/飛行訓練装置の時間を入力)');
   if (!f.dep || !f.arr) throw new Error('出発地・到着地は必須です');

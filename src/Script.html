@@ -22,6 +22,12 @@ function hm(min, blank) {
   return neg + Math.floor(min / 60) + ':' + ('0' + (min % 60)).slice(-2);
 }
 function hours1(min) { return (Number(min || 0) / 60).toFixed(1); }
+/** 離陸 / 着陸 display: real count plus the SIM count in parentheses ("(1)", "2043 (12)"), as on the report. */
+function cnt(t, k, keepZero) {
+  var n = Number(t[k]) || 0, s = Number(t['sim_' + k]) || 0;
+  if (!s) return keepZero ? String(n) : (n ? String(n) : '');
+  return (n || keepZero ? n + ' ' : '') + '(' + s + ')';
+}
 /** UI label for a column: the JCAB label from the server, with "SIC" shown as "CO" in the UI. */
 function lbl(k) { return (COLS[k] ? COLS[k].label : k).replace(/SIC/g, 'CO'); }
 /** "0745" / "745" → "07:45" (clock) ; for durations "0130" → "1:30". Other values are returned unchanged. */
@@ -109,7 +115,7 @@ function renderHeader(c) {
     '<span>CO <b>' + hm(c.sic + c.solo_sic) + '</b></span>' +
     '<span>夜間 <b>' + hm(c.pic_night + c.sic_night) + '</b></span>' +
     '<span>計器 <b>' + hm(c.ifr) + '</b></span>' +
-    '<span>離陸/着陸 <b>' + c.takeoffs + '/' + c.landings + '</b></span>' +
+    '<span>離陸/着陸 <b>' + cnt(c, 'takeoffs', true) + ' / ' + cnt(c, 'landings', true) + '</b></span>' +
     (loadPending().length ? '<span>未保存 <b class="pend">' + loadPending().length + '</b></span>' : '');
 }
 
@@ -193,6 +199,10 @@ function setRole(r, pattern, member) {
   S.role = r;
   $$('#roleSeg button').forEach(function (b) { b.classList.toggle('active', b.dataset.role === r); });
   $('#splitPic').style.display = r === 'split' ? '' : 'none';
+  // SIM sessions record take-offs / landings in the separate SIM counters (not in the totals)
+  $$('#flightForm .realcnt').forEach(function (e) { e.style.display = r === 'sim' ? 'none' : ''; });
+  $$('#flightForm .simcnt').forEach(function (e) { e.style.display = r === 'sim' ? '' : 'none'; });
+  if (r !== 'sim') { fset('sim_takeoffs', 0); fset('sim_landings', 0); }
   var isCrew = r === 'N' || r === 'M' || r === 'D';
   $('#crewPattern').style.display = isCrew ? '' : 'none';
   $('#crewMember').style.display = isCrew ? '' : 'none';
@@ -210,7 +220,7 @@ function setRole(r, pattern, member) {
     M: 'マルチ編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
     D: 'ダブル編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
     split: '手動分割: 指定した PIC 時間を機長側、残りを副操縦士側に配分します',
-    sim: '模擬飛行装置: 飛行時間 = 0、離着陸 = 0、SIM 時間にブロックタイムを入れます'
+    sim: '模擬飛行装置: 飛行時間 = 0、SIM 時間にブロックタイムを入れます。離着陸は「SIM 離陸 / SIM 着陸」に記入（合計には含めず別に集計、帳票には (1) のように記入）'
   }[r];
 }
 
@@ -297,6 +307,8 @@ function buildRecord() {
   try { DUR_KEYS.forEach(function (k) { rec[k] = toMin(o[k]); }); } catch (e) { toast(e.message, true); return null; }
   ['aircraft_type', 'registration', 'dep', 'arr', 'flight_no'].forEach(function (k) { rec[k] = String(rec[k] || '').trim().toUpperCase(); });
   rec.takeoffs = Number(o.takeoffs) || 0; rec.landings = Number(o.landings) || 0;
+  rec.sim_takeoffs = S.role === 'sim' ? Number(o.sim_takeoffs) || 0 : 0;
+  rec.sim_landings = S.role === 'sim' ? Number(o.sim_landings) || 0 : 0;
   if (!rec.date) { toast('月日を入力してください', true); return null; }
   var missing = [['aircraft_type', '航空機の型式'], ['dep', '出発地'], ['arr', '到着地']].concat(S.role === 'sim' ? [] : [['registration', '登録記号']])
     .filter(function (m) { return !rec[m[0]]; }).map(function (m) { return m[1]; });
@@ -442,7 +454,7 @@ function renderTable(table, flights, opts) {
     return cols.map(function (k) {
       var c = COLS[k], v = f[k];
       if (c.kind === 'min') return '<td class="num">' + hm(v, true) + '</td>';
-      if (c.kind === 'int') return '<td class="num">' + (v || '') + '</td>';
+      if (c.kind === 'int') return '<td class="num">' + cnt(f, k) + '</td>';
       if (k === 'crew') return '<td>' + (v ? '<span class="tag">' + esc(v) + '</span>' : '') + '</td>';
       if (k === 'qpr') return '<td>' + (v === '1' ? '<span class="tag qpr">QPR</span>' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
@@ -461,7 +473,7 @@ function renderTable(table, flights, opts) {
       return '<tr class="total">' + cols.map(function (ck, ci) {
         if (ci === 7) return '<td>' + lab[k] + '</td>';
         if (TOTAL_KEYS.indexOf(ck) < 0) return '<td></td>';
-        return '<td class="num">' + (COLS[ck].kind === 'int' ? t[k][ck] : hm(t[k][ck])) + '</td>';
+        return '<td class="num">' + (COLS[ck].kind === 'int' ? cnt(t[k], ck, true) : hm(t[k][ck])) + '</td>';
       }).join('') + '<td></td></tr>';
     }).join('') + '</tfoot>';
   }
@@ -500,7 +512,7 @@ function fillYears() {
 }
 function kpi(el, t, keys) {
   el.innerHTML = keys.map(function (k) {
-    var v = k === 'takeoffs' || k === 'landings' ? t[k] : hm(t[k]);
+    var v = k === 'takeoffs' || k === 'landings' ? cnt(t, k, true) : hm(t[k]);
     return '<div><label>' + esc(lbl(k)) + '</label><b>' + v + '</b></div>';
   }).join('');
 }
@@ -513,9 +525,9 @@ function loadSummary() {
     var keys = ['block', 'pic', 'sic', 'pic_night', 'sic_night', 'ifr', 'sim', 'takeoffs', 'landings'];
     var h = '<thead><tr><th>月</th><th class="num">レグ</th>' + keys.map(function (k) { return '<th class="num">' + esc(shortLabel(k)) + '</th>'; }).join('') + '</tr></thead><tbody>';
     r.months.forEach(function (m) {
-      h += '<tr><td>' + m.ym + '</td><td class="num">' + m.count + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? m[k] : hm(m[k], true)) + '</td>'; }).join('') + '</tr>';
+      h += '<tr><td>' + m.ym + '</td><td class="num">' + m.count + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? cnt(m, k, true) : hm(m[k], true)) + '</td>'; }).join('') + '</tr>';
     });
-    h += '<tr class="total"><td>年計</td><td class="num">' + r.months.reduce(function (a, m) { return a + m.count; }, 0) + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? r.yearTotal[k] : hm(r.yearTotal[k])) + '</td>'; }).join('') + '</tr></tbody>';
+    h += '<tr class="total"><td>年計</td><td class="num">' + r.months.reduce(function (a, m) { return a + m.count; }, 0) + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? cnt(r.yearTotal, k, true) : hm(r.yearTotal[k])) + '</td>'; }).join('') + '</tr></tbody>';
     $('#sumTable').innerHTML = h;
     var th = '<thead><tr><th>型式</th><th class="num">レグ</th><th class="num">飛行時間</th><th class="num">時間 (h)</th></tr></thead><tbody>';
     Object.keys(r.byType).sort().forEach(function (t) { th += '<tr><td>' + esc(t) + '</td><td class="num">' + r.byType[t].legs + '</td><td class="num">' + hm(r.byType[t].block) + '</td><td class="num">' + hours1(r.byType[t].block) + '</td></tr>'; });

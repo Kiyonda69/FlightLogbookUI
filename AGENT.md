@@ -93,6 +93,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 | source / created_at / updated_at | meta | 由来 (`ui` / `csv:...` / `numbers:...`) と時刻 |
 | crew | text | 編成コード `M2/0`（パターン id / 自分の位置）, `SPLIT`, `SIM`, 旧データは空。帳票には出さない |
 | qpr | text | QPR フライトなら `'1'`、それ以外は空（`normalizeFlight_` が true / 1 / yes / ○ を `'1'` に正規化）。帳票には出さず、資格要件チェックリスト シートの **ROUTE CHK 欄**（前回実施日・年度別実施日・基準月）と集計タブの「ROUTE CHK / QPR (年度)」に反映 |
+| sim_takeoffs / sim_landings | int | SIM/FTD セッションの離着陸回数（`SIM_COUNT_KEYS`）。**`takeoffs` / `landings` の合計には含めず別に集計**（ユーザー指示）。帳票の離着陸回数欄に `(1)` のように記入 |
 
 列を末尾に追加したときは `ensureFlightsHeader_`（`setupSpreadsheet` と書式修復が呼ぶほか、`readAllFlights_` / `writeFlightRows_` が列数不足を検知すると自動で呼ぶ）が既存シートに見出しとテキスト書式を追加する。コードを貼り直しただけで既存シートがそのまま使える（`qpr` 列追加時に確認）。
 
@@ -105,6 +106,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 飛行時間は `arr - dep`、日付跨ぎは +24h（Numbers 版の `G+(F>G)-F` と同じ）。
 - 役割時間 (pic, sic, …) は `block` を超えてはならない（`normalizeFlight_` が拒否）。
 - SIM/FTD セッションは `block = 0`, `takeoffs = landings = 0`, 登録記号は空でもよい（旧データに 11 行ある）。
+- SIM の離着陸回数は `sim_takeoffs` / `sim_landings` に入れる（`normalizeFlight_` が 0 以上の整数か、SIM/FTD セッション = 飛行時間 0 かを検査し、実飛行への入力は拒否）。`TOTAL_KEYS` には入れない: 集計オブジェクト（`zeroTotals_` / `addTotals_` / `sumTotals_`）は `TOTAL_KEYS + SIM_COUNT_KEYS` を足すので項小計・前項までの合計・合計・累計・年計・直近 N 日には `sim_*` が別キーとして載るが、`takeoffs` / `landings` には一切加算しない。繰越（`carry_forward_*`）は無し。90 日離着陸（資格要件）も実機の `landings` のみ。
+- 帳票の離陸・着陸列 (I:J) は **テキスト書式 `@`**（`countText_` が文字列を書く）。SIM レグは `(3)`、合計行は SIM 分があれば `2043 (12)` / `0 (3)`、無ければ `2043`。Sheets は `(1)` を数値 -1 と解釈するため `@` が必須（`dev/mock_gas.js` もこの変換を模擬）。列幅は `2043 (12)` が収まる 68px。UI（一覧・合計行・ヘッダー・集計）も同じ表記（`Script.html` の `cnt()`）。
+- Apps Script はファイルの評価順を保証しないので、トップレベルで他ファイルのグローバル（例: `TOTAL_KEYS`）を使った `var` 初期化をしない（`Totals.gs` の `summedKeys_()` は初回呼び出し時に作る）。
 - 帳票の 3 段合計:
   - 項小計 = 当月レグの合計
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
@@ -136,6 +140,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 便名 `flight_no` は UI（`change` で大文字化、CSS `text-transform`）とサーバー（`normalizeFlight_`）の両方で **大文字固定**。型式・登録記号・空港コードと同じ扱い。
 - 時刻・時間の 3〜4 桁入力は `normClock()` が `change` 時に `H:MM` へ直す（`0745` → `07:45`、`130` → `1:30`。末尾 2 桁が 60 以上なら触らない）。サーバーの `parseClock_` も `0745` を受け付ける。他の `change` ハンドラより **先に登録**しておくこと（`applyRole` が正規化後の値を見る必要がある）。「JCAB 全項目を直接編集」の欄は `buildDetailGrid()` が後から作るので、そこで個別に同じリスナーを付ける（`bindForm` の一括登録には含まれない）。時間欄で桁だけの値を「分」として解釈する `toMin` の規則は変えていない（繰越合計の欄は対象外）。
 - 必須チェックは `buildRecord()`（月日・型式・出発・到着、SIM 以外は登録記号、飛行時間 0 の拒否）。「今すぐ保存」と「キューに追加」の両方がここを通る。
+- 編成「SIM」を選ぶと離陸・着陸欄（`.realcnt`）を隠して「SIM 離陸 / SIM 着陸」欄（`.simcnt`）を出す（`setRole`）。SIM 以外に切り替えると SIM 回数は 0 に戻し、`buildRecord()` も SIM 以外では 0 を送る。
 
 ### まとめて保存（未保存キュー、localStorage `logbook.pending`）
 

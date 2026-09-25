@@ -23,13 +23,15 @@
  *
  * Text-like values (月日 "5.30", clocks "23:40") go into cells whose number format is set to text
  * ('@') BEFORE the values are written; otherwise Sheets converts "5.30" into the number 5.3.
+ * The 離陸 / 着陸 columns are text for the same reason: SIM counts are written in parentheses
+ * ("(1)" on a SIM leg, "2043 (12)" on a total row) and Sheets would read "(1)" as the number -1.
  */
 
 var REPORT_MIN_ROWS = 15;      // blank rows to pad each month block to
 var REPORT_BLOCK_GAP = 2;      // empty rows between month blocks
 var REPORT_NCOL = 29;          // A..AC
 var REPORT_LAYOUT_KEY = 'report_layout_'; // Script Properties: report_layout_<sheetName>
-var REPORT_DESIGN_VERSION = 2; // bump when merges / widths / heights change, forcing a relayout
+var REPORT_DESIGN_VERSION = 3; // bump when formats / merges / widths / heights change, forcing a relayout
 
 var REPORT_FONT = 'Noto Sans JP';
 var REPORT_FONT_SIZE = 10;
@@ -40,7 +42,7 @@ var REPORT_HEADER_ROW_HEIGHT = 34;
 var REPORT_ROW_HEIGHT = 21;
 var REPORT_COL_WIDTHS = [
   42, 44, 60, 46, 46, 52, 52, 84,   // 月日 型式 登録記号 出発地 到着地 出発時刻 到着時刻 飛行内容
-  42, 42, 76,                       // 離陸 着陸 飛行時間
+  68, 68, 76,                       // 離陸 着陸 (room for "2043 (12)") 飛行時間
   66, 150, 118, 66, 66,             // 機長 単独・副機長 PUS 野外 夜間
   66, 66, 66, 66,                   // 副操縦士 同乗教育 野外 夜間
   66, 100,                          // フード 計器飛行
@@ -122,7 +124,7 @@ function rebuildYearSheet_(year, all, force) {
 
   // Column number formats over the used rows — BEFORE writing values (text columns must be '@').
   sh.getRange(1, 1, nrows, 8).setNumberFormat('@');           // 月日..飛行内容 (incl. clocks)
-  sh.getRange(1, 9, nrows, 2).setNumberFormat('0');           // 離陸 / 着陸
+  sh.getRange(1, 9, nrows, 2).setNumberFormat('@');           // 離陸 / 着陸 (text: "(1)" = SIM count)
   sh.getRange(1, 11, nrows, 17).setNumberFormat('[h]:mm');    // 飛行時間..その他 (K..AA)
   sh.getRange(1, 28, nrows, 2).setNumberFormat('@');          // 自由欄
 
@@ -209,7 +211,7 @@ function planYear_(year, all) {
       row[7] = label[k];
       TOTAL_KEYS.forEach(function (key, idx) {
         var v = totals[k][key];
-        row[8 + idx] = (key === 'takeoffs' || key === 'landings') ? v : v / 1440;
+        row[8 + idx] = SIM_COUNT_OF[key] ? countText_(v, totals[k][SIM_COUNT_OF[key]], true) : v / 1440;
       });
       grid.push(row);
     });
@@ -261,8 +263,19 @@ function reportCell_(f, key) {
   var col = FLIGHT_COLUMNS[colIndex_(key)];
   if (key === 'date') { var p = f.date.split('-'); return parseInt(p[1], 10) + '.' + p[2]; }
   if (col.kind === 'min') return f[key] ? f[key] / 1440 : '';
+  if (SIM_COUNT_OF[key]) return countText_(f[key], f[SIM_COUNT_OF[key]], false);
   if (col.kind === 'int') return f[key];
   return f[key] || '';
+}
+
+/**
+ * 離陸 / 着陸 cell text: the real count, with the SIM count in parentheses when there is one.
+ * A SIM leg shows only "(1)"; a total row keeps the real count ("0 (3)", "2043 (12)").
+ */
+function countText_(n, sim, keepZero) {
+  n = Number(n) || 0; sim = Number(sim) || 0;
+  if (!sim) return String(n);
+  return (n || keepZero ? n + ' ' : '') + '(' + sim + ')';
 }
 
 /** Existing year sheets, newest first. */

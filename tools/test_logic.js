@@ -54,7 +54,8 @@ check('re-import skips duplicates', [res2.inserted, res2.skipped], [0, 860]);
 var expected = {
   takeoffs: 2043, landings: 2049, block: 772533, pic: 175593, solo_sic: 6965, pus: 103511,
   pic_xc: 280447, pic_night: 93530, sic: 457449, dual: 21594, sic_xc: 471807, sic_night: 180337,
-  hood: 4010, ifr: 133315, sim: 31475, ftd: 0, instructor: 0, flight_engineer: 0, other: 7421
+  hood: 4010, ifr: 133315, sim: 31475, ftd: 0, instructor: 0, flight_engineer: 0, other: 7421,
+  sim_takeoffs: 0, sim_landings: 0   // SIM counts are summed separately (none in the legacy data)
 };
 var m = ctx.apiGetMonth('2024-10');
 check('2024-10 leg count', m.flights.length, 7);
@@ -139,7 +140,7 @@ check('year sheet header INST sub-label', yrows[2][27] + '|' + yrows[2][28], 'IN
 var grand = yrows.filter(function (r) { return r[7] === '合  計'; });
 check('year sheet has 12 合計 rows', grand.length, 12);
 check('year sheet last 合計 == cumulative', Math.round(grand[11][10] * 1440), expected.block);
-check('year sheet 合計 takeoffs', grand[11][8], expected.takeoffs);
+check('year sheet 合計 takeoffs (text cell)', grand[11][8], String(expected.takeoffs));
 check('year sheet Dec 前項までの合計 == Oct 合計 (no Nov/Dec flights)', Math.round(yrows.filter(function (r) { return r[7] === '前項までの合計'; })[11][10] * 1440), expected.block);
 // the "5.30 → 5.3" regression: 2024-05-30 must stay the text "5.30"; clocks stay text too
 check('2024-05-30 written as text "5.30"', yrows.some(function (r) { return r[0] === '5.30'; }), true);
@@ -302,14 +303,49 @@ check('qual sheet: 2026年度 ROUTE CHK', routeFy['2026年度\n実施日'], '202
 check('qual sheet: still the 27-row CAP form (no extra block)', [ctx.QUAL_ROWS, qsh.rows.length <= 27 || qsh.rows.slice(27).every(function (r) { return r.every(function (c) { return c === '' || c === undefined; }); })], [27, true]);
 [q1, q2, q3, q4].forEach(function (f) { ctx.apiDeleteFlight(f.id); });
 check('qpr: cleanup', ctx.apiBootstrap().cumulative, before);
-// header migration: a sheet created before the crew column gets the header appended
+
+// --- SIM take-offs / landings: stored in their own columns, summed separately, "(n)" on the report
+var simLeg = function (d, fn, to, ld) { return { date: d, aircraft_type: 'B77W', registration: '', dep: 'RJTT', arr: 'RJTT', flight_no: fn, sim: 240, crew: 'SIM', sim_takeoffs: to, sim_landings: ld }; };
+var s1 = ctx.apiAddFlight(simLeg('2025-06-10', 'M21', 3, '4')).flight;
+check('sim counts stored as numbers, real counts stay 0', [s1.sim_takeoffs, s1.sim_landings, s1.takeoffs, s1.landings], [3, 4, 0, 0]);
+check('sim counts read back from the sheet', (function (f) { return [f.sim_takeoffs, f.sim_landings]; })(ctx.apiGetMonth('2025-06').flights[0]), [3, 4]);
+var s2 = ctx.apiSaveFlights([simLeg('2025-07-01', 'M22', 2, 2)]).flights[0];
+var cumSim = ctx.apiBootstrap().cumulative;
+check('sim counts NOT added to takeoffs / landings totals', [cumSim.takeoffs, cumSim.landings], [before.takeoffs, before.landings]);
+check('sim counts summed separately', [cumSim.sim_takeoffs, cumSim.sim_landings], [5, 6]);
+var jul = ctx.apiGetMonth('2025-07').totals;
+check('month totals: 項小計 / 前項までの合計 / 合計 sim landings', [jul.subtotal.sim_landings, jul.carried.sim_landings, jul.total.sim_landings], [2, 4, 6]);
+check('year summary carries sim counts', ctx.apiYearSummary('2025').yearTotal.sim_takeoffs, 5);
+var r25 = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2025').rows;
+var simRow = r25.filter(function (r) { return r[7] === 'M21'; })[0];
+check('report: SIM leg shows "(3)" / "(4)" as text (not -3)', [simRow[8], simRow[9]], ['(3)', '(4)']);
+var julIdx = r25.findIndex(function (r) { return r[0] === '7月'; });
+var julTot = r25.slice(julIdx).filter(function (r) { return /計/.test(String(r[7])); }).slice(0, 3);
+check('report: July 項小計 / 前項までの合計 / 合計 landings', julTot.map(function (r) { return r[9]; }), ['0 (2)', before.landings + ' (4)', before.landings + ' (6)']);
+check('report: months without SIM counts keep the plain count', r25.filter(function (r) { return r[7] === '合  計'; })[0][8], String(before.takeoffs));
+var badSim = null; try { ctx.apiAddFlight({ date: '2025-06-11', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'RJOO', dep_time: '01:00', arr_time: '02:00', pic: 60, sim_landings: 1 }); } catch (e) { badSim = e.message; }
+check('sim counts rejected on a real flight', /SIM の離着陸回数/.test(badSim || ''), true);
+var negSim = null; try { ctx.apiAddFlight(simLeg('2025-06-12', 'M21', -1, 0)); } catch (e) { negSim = e.message; }
+check('negative sim count rejected', /0 以上の整数/.test(negSim || ''), true);
+var simCol = ctx.colIndex_('sim_landings') + 1, simSh = ctx.__mockSpreadsheet.getSheetByName('Flights'), simR = ctx.readAllFlights_().filter(function (f) { return f.id === s1.id; })[0]._row;
+simSh.rows[simR - 1][simCol - 1] = '1:00'; ctx.onEdit({ range: simSh.getRange(simR, simCol, 1, 1) });
+check('onEdit: sim count "1:00" → marked', simSh.backgrounds[simR + ',' + simCol], ctx.FLIGHT_BAD_BG);
+simSh.rows[simR - 1][simCol - 1] = 4; ctx.onEdit({ range: simSh.getRange(simR, simCol, 1, 1) });
+check('onEdit: sim count restored', simSh.backgrounds[simR + ',' + simCol], null);
+[s1, s2].forEach(function (f) { ctx.apiDeleteFlight(f.id); });
+check('sim: cleanup', ctx.apiBootstrap().cumulative, before);
+
+// header migration: a sheet created before sim_takeoffs / sim_landings (34 columns in every row)
+var lastKey = ctx.FLIGHT_COLUMNS[ctx.FLIGHT_COLUMNS.length - 1].key;
 var fl = ctx.__mockSpreadsheet.getSheetByName('Flights');
-fl.rows[0] = fl.rows[0].slice(0, fl.rows[0].length - 1);
-check('ensureFlightsHeader_ appends missing header', ctx.ensureFlightsHeader_(fl), 1);
-check('header complete again', fl.rows[0][fl.rows[0].length - 1], 'qpr');
-fl.rows[0] = fl.rows[0].slice(0, fl.rows[0].length - 1);
-ctx.apiBootstrap();
-check('readAllFlights_ self-heals a missing trailing header', fl.rows[0][fl.rows[0].length - 1], 'qpr');
+var trimOld = function () { fl.rows = fl.rows.map(function (r) { return r.slice(0, ctx.FLIGHT_COLUMNS.length - 2); }); };
+trimOld();
+check('ensureFlightsHeader_ appends the 2 missing headers', ctx.ensureFlightsHeader_(fl), 2);
+check('header complete again', fl.rows[0].slice(-2), ['sim_takeoffs', lastKey]);
+trimOld();
+check('readAllFlights_ self-heals and reads old rows as 0 SIM counts', ctx.readAllFlights_().every(function (f) { return f.sim_takeoffs === 0 && f.sim_landings === 0; }), true);
+check('readAllFlights_ self-heals a missing trailing header', fl.rows[0][fl.rows[0].length - 1], lastKey);
+check('cumulative unchanged after migration', ctx.apiBootstrap().cumulative, before);
 
 // --- onEdit: direct edits of the Flights sheet are marked (red + note), never rewritten
 var vsh = ctx.__mockSpreadsheet.getSheetByName('Flights');

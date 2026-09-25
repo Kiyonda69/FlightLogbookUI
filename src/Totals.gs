@@ -6,22 +6,28 @@
  *   前項までの合計 (carried)      = carry_forward (Settings) + Σ flights before M
  *   合計         (grand total)   = carried + subtotal
  * All values: takeoffs/landings = counts, everything else = minutes.
+ * Totals objects also carry sim_takeoffs / sim_landings (SIM_COUNT_KEYS), summed on their own:
+ * simulator counts are never added into takeoffs / landings and have no carry-forward.
  */
+
+// built on first use: Apps Script does not guarantee that Schema.gs is evaluated before this file
+var summedKeysCache_ = null;
+function summedKeys_() { return summedKeysCache_ || (summedKeysCache_ = TOTAL_KEYS.concat(SIM_COUNT_KEYS)); }
 
 function zeroTotals_() {
   var t = {};
-  TOTAL_KEYS.forEach(function (k) { t[k] = 0; });
+  summedKeys_().forEach(function (k) { t[k] = 0; });
   return t;
 }
 
 function addTotals_(acc, f) {
-  TOTAL_KEYS.forEach(function (k) { acc[k] += Number(f[k]) || 0; });
+  summedKeys_().forEach(function (k) { acc[k] += Number(f[k]) || 0; });
   return acc;
 }
 
 function sumTotals_(a, b) {
   var t = {};
-  TOTAL_KEYS.forEach(function (k) { t[k] = (Number(a[k]) || 0) + (Number(b[k]) || 0); });
+  summedKeys_().forEach(function (k) { t[k] = (Number(a[k]) || 0) + (Number(b[k]) || 0); });
   return t;
 }
 

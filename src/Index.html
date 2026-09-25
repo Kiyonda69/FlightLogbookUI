@@ -32,8 +32,10 @@
       <div><label>出発時刻 <span id="tzLabel">UTC</span></label><input class="dur" name="dep_time" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div>
       <div><label>到着時刻 <span class="tz">UTC</span></label><input class="dur" name="arr_time" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div>
       <div><label>飛行内容 (便名等)</label><input name="flight_no" class="upper" placeholder="JL10"></div>
-      <div><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
-      <div><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
+      <div class="realcnt"><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
+      <div class="realcnt"><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
+      <div class="simcnt" style="display:none"><label title="離陸の合計には含めず別に集計。帳票には (1) のように記入">SIM 離陸 (合計に含めない)</label><input type="number" name="sim_takeoffs" min="0" step="1" value="0"></div>
+      <div class="simcnt" style="display:none"><label title="着陸の合計には含めず別に集計。帳票には (1) のように記入">SIM 着陸 (合計に含めない)</label><input type="number" name="sim_landings" min="0" step="1" value="0"></div>
       <div><label>ブロックタイム OUT→IN (自動)</label><input class="dur" name="_actual" placeholder="H:MM"></div>
     </div>
 
@@ -115,7 +117,7 @@
     </div>
   </div>
   <div class="card"><h2>資格要件</h2><div id="qualBox" class="hint">読み込み中…</div></div>
-  <div class="card"><h2>累計 (繰越 + 全記録)</h2><div class="kpi" id="kpiCum"></div></div>
+  <div class="card"><h2>累計 (繰越 + 全記録)</h2><div class="kpi" id="kpiCum"></div><p class="hint" style="margin:6px 0 0">離陸・着陸の ( ) 内は SIM の回数（合計には含めず別に集計）</p></div>
   <div class="card"><h2 id="recencyTitle">直近 90 日</h2><div class="kpi" id="kpiRecent"></div></div>
   <div class="card"><h2 id="sumTitle">月別集計</h2><div class="scroll"><table id="sumTable"></table></div></div>
   <div class="card"><h2>型式別 (年)</h2><table id="typeTable"></table></div>
