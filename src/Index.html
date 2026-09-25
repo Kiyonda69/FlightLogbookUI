@@ -34,9 +34,9 @@
       <div><label>飛行内容 (便名等)</label><input name="flight_no" class="upper" placeholder="JL10"></div>
       <div class="realcnt"><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
       <div class="realcnt"><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
-      <div class="simcnt" style="display:none"><label title="離陸の合計には含めず別に集計。帳票には (1) のように記入">SIM 離陸 (合計に含めない)</label><input type="number" name="sim_takeoffs" min="0" step="1" value="0"></div>
-      <div class="simcnt" style="display:none"><label title="着陸の合計には含めず別に集計。帳票には (1) のように記入">SIM 着陸 (合計に含めない)</label><input type="number" name="sim_landings" min="0" step="1" value="0"></div>
-      <div><label>ブロックタイム OUT→IN (自動)</label><input class="dur" name="_actual" placeholder="H:MM"></div>
+      <div class="simcnt" style="display:none"><label>SIM 離陸</label><input type="number" name="sim_takeoffs" min="0" step="1" value="0"></div>
+      <div class="simcnt" style="display:none"><label>SIM 着陸</label><input type="number" name="sim_landings" min="0" step="1" value="0"></div>
+      <div><label>ブロックタイム</label><input class="dur" name="_actual" placeholder="H:MM"></div>
     </div>
 
     <div class="row" style="margin-top:12px">
@@ -62,7 +62,7 @@
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
       <div><label>記入する飛行時間</label><input class="dur" name="block" placeholder="H:MM"></div>
-      <div><label>QPR</label><label class="chk" title="チェックすると資格要件チェックリスト シートの ROUTE CHK 欄（前回実施日・年度別）に反映されます"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
+      <div><label>QPR</label><label class="chk"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
     </div>
 
     <details>
@@ -71,10 +71,10 @@
     </details>
 
     <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="btnQueue" type="button" title="この端末に一時保存し、あとで「最近の記録」の「保存」で 1 回の通信で書き込みます">キューに追加</button>
-      <button class="btn" id="btnSave" type="button" title="このレグだけを今すぐスプレッドシートに書き込みます（数秒かかります）">保存</button>
+      <button class="btn primary" id="btnQueue" type="button" title="あとでまとめて保存">キューに追加</button>
+      <button class="btn" id="btnSave" type="button" title="今すぐ保存">保存</button>
       <button class="btn" id="btnReset" type="button">クリア</button>
-      <button class="btn" id="btnCopyReturn" type="button" title="今の内容から復路を作る">復路を作成</button>
+      <button class="btn" id="btnCopyReturn" type="button">復路を作成</button>
       <span class="hint" id="formStatus"></span>
     </div>
   </form>
@@ -84,11 +84,11 @@
   <div class="card">
     <div class="row" style="margin-bottom:8px">
       <h2 style="margin:0">最近の記録</h2>
-      <button class="btn primary" id="btnSaveAll" style="display:none" title="未保存（グレー）のレグをまとめてスプレッドシートに書き込みます">保存</button>
-      <button class="btn danger small" id="btnClearPending" style="display:none" title="未保存のレグをすべて破棄します">未保存を破棄</button>
+      <button class="btn primary" id="btnSaveAll" style="display:none">保存</button>
+      <button class="btn danger small" id="btnClearPending" style="display:none">未保存を破棄</button>
       <span class="hint" id="pendingStatus"></span>
     </div>
-    <div class="legend"><span class="pend">未保存（この端末に一時保存、スプレッドシート未反映）</span><span class="pic">PIC（機長）</span><span class="sic">CO（副操縦士 / 単独CO / PUS）</span><span class="split">分割（同一レグにPICとCO時間の両方）</span><span class="sim">SIM / FTD</span></div>
+    <div class="legend"><span class="pend">未保存</span><span class="pic">PIC</span><span class="sic">CO</span><span class="split">分割</span><span class="sim">SIM / FTD</span></div>
     <div class="scroll"><table id="recentTable"></table></div>
   </div>
 </section>
@@ -103,7 +103,7 @@
       <span class="hint" id="listInfo"></span>
     </div>
   </div>
-  <div class="card"><div class="legend"><span class="pic">PIC（機長）</span><span class="sic">CO（副操縦士 / 単独CO / PUS）</span><span class="split">分割（同一レグにPICとCO時間の両方）</span><span class="sim">SIM / FTD</span></div><div class="scroll"><table id="listTable"></table></div></div>
+  <div class="card"><div class="legend"><span class="pic">PIC</span><span class="sic">CO</span><span class="split">分割</span><span class="sim">SIM / FTD</span></div><div class="scroll"><table id="listTable"></table></div></div>
 </section>
 
 <!-- ================= 集計 ================= -->
@@ -117,7 +117,7 @@
     </div>
   </div>
   <div class="card"><h2>資格要件</h2><div id="qualBox" class="hint">読み込み中…</div></div>
-  <div class="card"><h2>累計 (繰越 + 全記録)</h2><div class="kpi" id="kpiCum"></div><p class="hint" style="margin:6px 0 0">離陸・着陸の ( ) 内は SIM の回数（合計には含めず別に集計）</p></div>
+  <div class="card"><h2>累計</h2><div class="kpi" id="kpiCum"></div></div>
   <div class="card"><h2 id="recencyTitle">直近 90 日</h2><div class="kpi" id="kpiRecent"></div></div>
   <div class="card"><h2 id="sumTitle">月別集計</h2><div class="scroll"><table id="sumTable"></table></div></div>
   <div class="card"><h2>型式別 (年)</h2><table id="typeTable"></table></div>
@@ -125,7 +125,6 @@
 
 <!-- ================= 設定 ================= -->
 <section class="tab" id="tab-settings">
-  <p class="hint" style="margin:0 0 10px">この画面の設定（基本設定・資格要件チェックリスト・繰越合計）は、下の「設定をすべて保存」でまとめて保存されます。</p>
   <div class="card">
     <h2>基本設定</h2>
     <div class="grid">
@@ -137,22 +136,18 @@
   </div>
   <div class="card">
     <h2>資格要件チェックリスト</h2>
-    <p class="hint">スプレッドシートの「資格要件チェックリスト」シート（CAP 様式）は、ここで入力した内容と飛行日誌の記録（飛行内容が M12 / M21 / M22 / CACK / M11 / ROUTE / DIT のレグ、および QPR にチェックしたレグ → ROUTE CHK）から自動で更新されます。複数の日付はカンマ区切り（例: 2025-04-15, 2026-04-10）。集計タブの「資格要件」にも残日数と警告が出ます。</p>
     <div class="grid" id="expGrid"></div>
   </div>
   <div class="card">
     <h2>繰越合計 (システム導入前の累計)</h2>
-    <p class="hint">Numbers 版から移行する場合は data/carry_forward.json の値。時間は H:MM または分で入力。</p>
     <div class="grid narrow" id="carryGrid"></div>
   </div>
   <div class="savebar">
     <button class="btn primary" id="btnSaveSettings">設定をすべて保存</button>
-    <span class="hint">基本設定・資格要件チェックリスト・繰越合計の 3 つをまとめて保存し、年次シートとチェックリストを更新します</span>
     <span class="hint" id="settingsStatus"></span>
   </div>
   <div class="card">
     <h2>JCAB 飛行日誌シート</h2>
-    <p class="hint">年ごとのシート「飛行日誌_YYYY」（1月〜12月、各月に 項小計 / 前項までの合計 / 合計）は、レグの追加・編集・削除のたびに自動で更新されます。新しい年の最初のレグを保存すると、その年のシートが作られます。印刷は Google スプレッドシート側で行ってください。</p>
     <ul id="reportList" class="hint"></ul>
   </div>
   <div class="card">

@@ -215,13 +215,7 @@ function setRole(r, pattern, member) {
     S.member = member || 0;
     fillMembers();
   }
-  $('#roleHint').textContent = {
-    N: '2 名編成: ブロックタイム全部を自分の DUTY の欄に記入します',
-    M: 'マルチ編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
-    D: 'ダブル編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
-    split: '手動分割: 指定した PIC 時間を機長側、残りを副操縦士側に配分します',
-    sim: '模擬飛行装置: 飛行時間 = 0、SIM 時間にブロックタイムを入れます。離着陸は「SIM 離陸 / SIM 着陸」に記入（合計には含めず別に集計、帳票には (1) のように記入）'
-  }[r];
+  $('#roleHint').textContent = ''; // filled with the allocation result by applyRole()
 }
 
 /** Populate the "自分" select with the crew members of the current pattern and their formulas. */
@@ -430,7 +424,7 @@ function editFlight(f) {
   else if (roleOf(f) === 'sic') setRole('N', 'N1', 1);
   else setRole('N', 'N1', 0);
   // stored values are kept as-is (legacy rows may follow older allocation rules); the hint shows the code
-  $('#roleHint').textContent = '保存済みの値を表示しています (編成: ' + (f.crew || '未記録') + ')。編成や時刻を変えると再計算します';
+  $('#roleHint').textContent = '保存済みの値 (編成: ' + (f.crew || '未記録') + ')';
   showTab('entry'); window.scrollTo(0, 0);
 }
 
@@ -545,28 +539,27 @@ function loadRecency() {
 /* ---------- 資格要件 ---------- */
 var Q_STATUS = { ok: 'OK', due: '実施期間', warn: '要注意', over: '期限超過', unknown: '未記録', invalid: '日付不正' };
 function qItem(cls, title, big, sub) {
-  return '<div class="item ' + cls + '"><label>' + esc(title) + '</label><b>' + esc(big) + '</b><div class="sub">' + esc(sub) + '</div></div>';
+  return '<div class="item ' + cls + '"><label>' + esc(title) + '</label><b>' + esc(big) + '</b>' + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>';
 }
 function loadQualification() {
   call('apiQualification').then(function (q) {
     var h = '<div class="q">';
     var lf = q.lastFlight;
-    h += qItem(lf.status, '最終乗務からの経過', lf.date ? lf.days + ' 日' : '記録なし',
-      (lf.date ? '最終乗務 ' + lf.date + ' / ' : '') + '連続 ' + lf.limit + ' 日以上の中断で復帰訓練');
+    h += qItem(lf.status, '最終乗務からの経過', lf.date ? lf.days + ' 日' : '記録なし', lf.date ? '最終乗務 ' + lf.date : '');
     var rc = q.recency;
-    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回', rc.since + ' 以降 / 各 ' + rc.required + ' 回以上');
+    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回', rc.since + ' 以降');
     q.training.forEach(function (t) {
       h += qItem(t.status, t.label, t.last ? '前回 ' + t.last : '記録なし',
-        t.last ? '次回 基準月 ' + t.baseMonth + ' (実施期間 ' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '飛行内容に ' + t.code + ' と記入すると自動判定');
+        t.last ? '次回 基準月 ' + t.baseMonth + ' (' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '');
     });
     if (q.qpr) {
       var lq = q.qpr.last;
       h += qItem(q.qpr.status, 'ROUTE CHK / QPR (' + q.qpr.fy + '年度)', q.qpr.count + ' 回',
-        (lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '記録なし') + ' / 入力フォームで QPR にチェックしたレグ（チェックリストの ROUTE CHK 欄）');
+        lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '');
     }
     q.expiries.forEach(function (e) {
       h += qItem(e.status, e.label, e.date ? '有効期限 ' + e.date : '未設定',
-        e.date && e.status !== 'invalid' ? (e.daysLeft < 0 ? Math.abs(e.daysLeft) + ' 日超過' : '残り ' + e.daysLeft + ' 日 (' + e.warnDays + ' 日前から警告)') : '設定タブで入力');
+        e.date && e.status !== 'invalid' ? (e.daysLeft < 0 ? Math.abs(e.daysLeft) + ' 日超過' : '残り ' + e.daysLeft + ' 日') : '');
     });
     $('#qualBox').innerHTML = h + '</div>';
   }).catch(function (e) { $('#qualBox').textContent = e.message; });

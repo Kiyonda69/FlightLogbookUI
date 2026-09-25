@@ -141,9 +141,9 @@
       <div><label>飛行内容 (便名等)</label><input name="flight_no" class="upper" placeholder="JL10"></div>
       <div class="realcnt"><label>離陸</label><input type="number" name="takeoffs" min="0" step="1" value="1"></div>
       <div class="realcnt"><label>着陸</label><input type="number" name="landings" min="0" step="1" value="1"></div>
-      <div class="simcnt" style="display:none"><label title="離陸の合計には含めず別に集計。帳票には (1) のように記入">SIM 離陸 (合計に含めない)</label><input type="number" name="sim_takeoffs" min="0" step="1" value="0"></div>
-      <div class="simcnt" style="display:none"><label title="着陸の合計には含めず別に集計。帳票には (1) のように記入">SIM 着陸 (合計に含めない)</label><input type="number" name="sim_landings" min="0" step="1" value="0"></div>
-      <div><label>ブロックタイム OUT→IN (自動)</label><input class="dur" name="_actual" placeholder="H:MM"></div>
+      <div class="simcnt" style="display:none"><label>SIM 離陸</label><input type="number" name="sim_takeoffs" min="0" step="1" value="0"></div>
+      <div class="simcnt" style="display:none"><label>SIM 着陸</label><input type="number" name="sim_landings" min="0" step="1" value="0"></div>
+      <div><label>ブロックタイム</label><input class="dur" name="_actual" placeholder="H:MM"></div>
     </div>
 
     <div class="row" style="margin-top:12px">
@@ -169,7 +169,7 @@
       <div><label>野外飛行</label><select name="_xc"><option value="1">あり</option><option value="0">なし</option></select></div>
       <div><label>自由欄</label><input name="remarks"></div>
       <div><label>記入する飛行時間</label><input class="dur" name="block" placeholder="H:MM"></div>
-      <div><label>QPR</label><label class="chk" title="チェックすると資格要件チェックリスト シートの ROUTE CHK 欄（前回実施日・年度別）に反映されます"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
+      <div><label>QPR</label><label class="chk"><input type="checkbox" name="qpr" value="1"> QPR フライト</label></div>
     </div>
 
     <details>
@@ -178,10 +178,10 @@
     </details>
 
     <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="btnQueue" type="button" title="この端末に一時保存し、あとで「最近の記録」の「保存」で 1 回の通信で書き込みます">キューに追加</button>
-      <button class="btn" id="btnSave" type="button" title="このレグだけを今すぐスプレッドシートに書き込みます（数秒かかります）">保存</button>
+      <button class="btn primary" id="btnQueue" type="button" title="あとでまとめて保存">キューに追加</button>
+      <button class="btn" id="btnSave" type="button" title="今すぐ保存">保存</button>
       <button class="btn" id="btnReset" type="button">クリア</button>
-      <button class="btn" id="btnCopyReturn" type="button" title="今の内容から復路を作る">復路を作成</button>
+      <button class="btn" id="btnCopyReturn" type="button">復路を作成</button>
       <span class="hint" id="formStatus"></span>
     </div>
   </form>
@@ -191,11 +191,11 @@
   <div class="card">
     <div class="row" style="margin-bottom:8px">
       <h2 style="margin:0">最近の記録</h2>
-      <button class="btn primary" id="btnSaveAll" style="display:none" title="未保存（グレー）のレグをまとめてスプレッドシートに書き込みます">保存</button>
-      <button class="btn danger small" id="btnClearPending" style="display:none" title="未保存のレグをすべて破棄します">未保存を破棄</button>
+      <button class="btn primary" id="btnSaveAll" style="display:none">保存</button>
+      <button class="btn danger small" id="btnClearPending" style="display:none">未保存を破棄</button>
       <span class="hint" id="pendingStatus"></span>
     </div>
-    <div class="legend"><span class="pend">未保存（この端末に一時保存、スプレッドシート未反映）</span><span class="pic">PIC（機長）</span><span class="sic">CO（副操縦士 / 単独CO / PUS）</span><span class="split">分割（同一レグにPICとCO時間の両方）</span><span class="sim">SIM / FTD</span></div>
+    <div class="legend"><span class="pend">未保存</span><span class="pic">PIC</span><span class="sic">CO</span><span class="split">分割</span><span class="sim">SIM / FTD</span></div>
     <div class="scroll"><table id="recentTable"></table></div>
   </div>
 </section>
@@ -210,7 +210,7 @@
       <span class="hint" id="listInfo"></span>
     </div>
   </div>
-  <div class="card"><div class="legend"><span class="pic">PIC（機長）</span><span class="sic">CO（副操縦士 / 単独CO / PUS）</span><span class="split">分割（同一レグにPICとCO時間の両方）</span><span class="sim">SIM / FTD</span></div><div class="scroll"><table id="listTable"></table></div></div>
+  <div class="card"><div class="legend"><span class="pic">PIC</span><span class="sic">CO</span><span class="split">分割</span><span class="sim">SIM / FTD</span></div><div class="scroll"><table id="listTable"></table></div></div>
 </section>
 
 <!-- ================= 集計 ================= -->
@@ -224,7 +224,7 @@
     </div>
   </div>
   <div class="card"><h2>資格要件</h2><div id="qualBox" class="hint">読み込み中…</div></div>
-  <div class="card"><h2>累計 (繰越 + 全記録)</h2><div class="kpi" id="kpiCum"></div><p class="hint" style="margin:6px 0 0">離陸・着陸の ( ) 内は SIM の回数（合計には含めず別に集計）</p></div>
+  <div class="card"><h2>累計</h2><div class="kpi" id="kpiCum"></div></div>
   <div class="card"><h2 id="recencyTitle">直近 90 日</h2><div class="kpi" id="kpiRecent"></div></div>
   <div class="card"><h2 id="sumTitle">月別集計</h2><div class="scroll"><table id="sumTable"></table></div></div>
   <div class="card"><h2>型式別 (年)</h2><table id="typeTable"></table></div>
@@ -232,7 +232,6 @@
 
 <!-- ================= 設定 ================= -->
 <section class="tab" id="tab-settings">
-  <p class="hint" style="margin:0 0 10px">この画面の設定（基本設定・資格要件チェックリスト・繰越合計）は、下の「設定をすべて保存」でまとめて保存されます。</p>
   <div class="card">
     <h2>基本設定</h2>
     <div class="grid">
@@ -244,22 +243,18 @@
   </div>
   <div class="card">
     <h2>資格要件チェックリスト</h2>
-    <p class="hint">スプレッドシートの「資格要件チェックリスト」シート（CAP 様式）は、ここで入力した内容と飛行日誌の記録（飛行内容が M12 / M21 / M22 / CACK / M11 / ROUTE / DIT のレグ、および QPR にチェックしたレグ → ROUTE CHK）から自動で更新されます。複数の日付はカンマ区切り（例: 2025-04-15, 2026-04-10）。集計タブの「資格要件」にも残日数と警告が出ます。</p>
     <div class="grid" id="expGrid"></div>
   </div>
   <div class="card">
     <h2>繰越合計 (システム導入前の累計)</h2>
-    <p class="hint">Numbers 版から移行する場合は data/carry_forward.json の値。時間は H:MM または分で入力。</p>
     <div class="grid narrow" id="carryGrid"></div>
   </div>
   <div class="savebar">
     <button class="btn primary" id="btnSaveSettings">設定をすべて保存</button>
-    <span class="hint">基本設定・資格要件チェックリスト・繰越合計の 3 つをまとめて保存し、年次シートとチェックリストを更新します</span>
     <span class="hint" id="settingsStatus"></span>
   </div>
   <div class="card">
     <h2>JCAB 飛行日誌シート</h2>
-    <p class="hint">年ごとのシート「飛行日誌_YYYY」（1月〜12月、各月に 項小計 / 前項までの合計 / 合計）は、レグの追加・編集・削除のたびに自動で更新されます。新しい年の最初のレグを保存すると、その年のシートが作られます。印刷は Google スプレッドシート側で行ってください。</p>
     <ul id="reportList" class="hint"></ul>
   </div>
   <div class="card">
@@ -706,13 +701,7 @@ function setRole(r, pattern, member) {
     S.member = member || 0;
     fillMembers();
   }
-  $('#roleHint').textContent = {
-    N: '2 名編成: ブロックタイム全部を自分の DUTY の欄に記入します',
-    M: 'マルチ編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
-    D: 'ダブル編成: 配分表 (Rev.2) の分数でブロックタイムを配分し、端数は四捨五入。飛行時間 (8項) は配分した時間の合計です',
-    split: '手動分割: 指定した PIC 時間を機長側、残りを副操縦士側に配分します',
-    sim: '模擬飛行装置: 飛行時間 = 0、SIM 時間にブロックタイムを入れます。離着陸は「SIM 離陸 / SIM 着陸」に記入（合計には含めず別に集計、帳票には (1) のように記入）'
-  }[r];
+  $('#roleHint').textContent = ''; // filled with the allocation result by applyRole()
 }
 
 /** Populate the "自分" select with the crew members of the current pattern and their formulas. */
@@ -921,7 +910,7 @@ function editFlight(f) {
   else if (roleOf(f) === 'sic') setRole('N', 'N1', 1);
   else setRole('N', 'N1', 0);
   // stored values are kept as-is (legacy rows may follow older allocation rules); the hint shows the code
-  $('#roleHint').textContent = '保存済みの値を表示しています (編成: ' + (f.crew || '未記録') + ')。編成や時刻を変えると再計算します';
+  $('#roleHint').textContent = '保存済みの値 (編成: ' + (f.crew || '未記録') + ')';
   showTab('entry'); window.scrollTo(0, 0);
 }
 
@@ -1036,28 +1025,27 @@ function loadRecency() {
 /* ---------- 資格要件 ---------- */
 var Q_STATUS = { ok: 'OK', due: '実施期間', warn: '要注意', over: '期限超過', unknown: '未記録', invalid: '日付不正' };
 function qItem(cls, title, big, sub) {
-  return '<div class="item ' + cls + '"><label>' + esc(title) + '</label><b>' + esc(big) + '</b><div class="sub">' + esc(sub) + '</div></div>';
+  return '<div class="item ' + cls + '"><label>' + esc(title) + '</label><b>' + esc(big) + '</b>' + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>';
 }
 function loadQualification() {
   call('apiQualification').then(function (q) {
     var h = '<div class="q">';
     var lf = q.lastFlight;
-    h += qItem(lf.status, '最終乗務からの経過', lf.date ? lf.days + ' 日' : '記録なし',
-      (lf.date ? '最終乗務 ' + lf.date + ' / ' : '') + '連続 ' + lf.limit + ' 日以上の中断で復帰訓練');
+    h += qItem(lf.status, '最終乗務からの経過', lf.date ? lf.days + ' 日' : '記録なし', lf.date ? '最終乗務 ' + lf.date : '');
     var rc = q.recency;
-    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回', rc.since + ' 以降 / 各 ' + rc.required + ' 回以上');
+    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回', rc.since + ' 以降');
     q.training.forEach(function (t) {
       h += qItem(t.status, t.label, t.last ? '前回 ' + t.last : '記録なし',
-        t.last ? '次回 基準月 ' + t.baseMonth + ' (実施期間 ' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '飛行内容に ' + t.code + ' と記入すると自動判定');
+        t.last ? '次回 基準月 ' + t.baseMonth + ' (' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '');
     });
     if (q.qpr) {
       var lq = q.qpr.last;
       h += qItem(q.qpr.status, 'ROUTE CHK / QPR (' + q.qpr.fy + '年度)', q.qpr.count + ' 回',
-        (lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '記録なし') + ' / 入力フォームで QPR にチェックしたレグ（チェックリストの ROUTE CHK 欄）');
+        lq ? '前回 ' + lq.date + ' ' + lq.flight_no + ' ' + lq.dep + '-' + lq.arr : '');
     }
     q.expiries.forEach(function (e) {
       h += qItem(e.status, e.label, e.date ? '有効期限 ' + e.date : '未設定',
-        e.date && e.status !== 'invalid' ? (e.daysLeft < 0 ? Math.abs(e.daysLeft) + ' 日超過' : '残り ' + e.daysLeft + ' 日 (' + e.warnDays + ' 日前から警告)') : '設定タブで入力');
+        e.date && e.status !== 'invalid' ? (e.daysLeft < 0 ? Math.abs(e.daysLeft) + ' 日超過' : '残り ' + e.daysLeft + ' 日') : '');
     });
     $('#qualBox').innerHTML = h + '</div>';
   }).catch(function (e) { $('#qualBox').textContent = e.message; });
