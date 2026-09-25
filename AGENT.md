@@ -40,7 +40,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 ├── tools/
 │   ├── export_numbers.py    Numbers → data/flights.csv + data/carry_forward.json
 │   ├── build_pages.py       src/ → docs/index.html（fetch シム + 接続設定パネルを注入）
-│   └── test_logic.js        Node で src/*.gs をモック上で実行する回帰テスト（doPost も検証）
+│   ├── test_logic.js        Node で src/*.gs をモック上で実行する回帰テスト（doPost も検証）
+│   ├── setup_clasp.ps1      新しいマシンの clasp 環境構築（clasp 導入・.clasp.json・login・status）
+│   └── clasp_deploy.ps1     src/ を Apps Script へ push --force し、Pages 用デプロイを新バージョンに更新
 ├── dev/
 │   ├── mock_gas.js          SpreadsheetApp / Utilities / LockService / PropertiesService / ContentService の模擬
 │   ├── serve.py             ローカルプレビュー (http://localhost:8765/ = HtmlService 版, /docs/ = Pages 版)
@@ -50,8 +52,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   └── carry_forward.json   2017-08 時点の「前項までの合計」（システム導入前累計）
 ├── pages.config.json        Pages ビルド設定 { "apiUrl": "<Apps Script の /exec URL>" }（パスワードは書かない）
 ├── .claude/launch.json      プレビューサーバー定義 (logbook-dev / logbook-api)
-├── .clasp.json.example      clasp 設定の雛形（実物 .clasp.json は git 管理外）
-└── .claspignore / .gitignore
+├── .clasp.json.example      clasp 設定（本番 scriptId 入り）。tools/setup_clasp.ps1 が .clasp.json（git 管理外）にコピー
+├── .claspignore             clasp 3 用（rootDir=src からの相対。.gs / .html / appsscript.json のみ push）
+└── .gitignore
 ```
 
 ### JSON API（`doPost`）の契約
@@ -206,17 +209,29 @@ node dev/api_server.js 8766     # → http://localhost:8765/docs/   Pages 版（
 python tools/build_pages.py
 ```
 
-- `.gs` は V8 ランタイムの JavaScript。`node --check` で構文確認できるが、Apps Script API は `dev/mock_gas.js` に無いものを使ったらモックにも追加する。
+- `.gs` は V8 ランタイムの JavaScript。構文確認は `node tools/test_logic.js`（vm で全ファイルを読み込む。Node 24 の `node --check` は拡張子 `.gs` を拒否する）。Apps Script API は `dev/mock_gas.js` に無いものを使ったらモックにも追加する。
 - サーバー関数は **`api` 接頭辞 = UI 公開**、末尾 `_` = 非公開（Apps Script の慣例で `google.script.run` から呼べない）。
 - Apps Script エディタの「実行」ボタンは引数を渡せない。引数を取る `api*` 関数には、必要に応じて引数なしのラッパー（例: `importCarryForwardFromDrive`）かメニュー用のプロンプト版（例: `importCarryForwardPrompt`）を用意する。新しい GAS サービス（DriveApp 等）を使ったら `dev/mock_gas.js` にも模擬を追加する。
 - `src/*.gs` の読み込み順は Apps Script 上では無関係だが、`test_logic.js` と `serve.py` では `Schema → Util → Api → Totals → Report → Import → Code` の順。グローバル定数は Schema.gs にまとめる。
 - UI とサーバーの契約は JSON のみ（Date オブジェクトを返さない）。
 
-### Apps Script へのデプロイ
+### Apps Script へのデプロイ（clasp 運用、2026-09-25 導入）
 
-- clasp: `.clasp.json.example` を `.clasp.json` にコピーし `scriptId` を入れて `clasp push`。`rootDir` は `src`。
+**新しいマシンで作業を始めたら、最初に clasp 環境を用意すること**（エージェントも同様。`.clasp.json` とログイン情報 `~/.clasprc.json` は git 管理外なので、クローンしただけでは push できない）:
+
+1. Node.js が無ければ入れる（`winget install OpenJS.NodeJS.LTS`）。
+2. `powershell -ExecutionPolicy Bypass -File tools\setup_clasp.ps1` を実行 — clasp v3 の導入、`.clasp.json.example` → `.clasp.json`、未ログインなら `clasp login`、最後に `clasp status`。`src/` の **15 ファイルすべてが Tracked** であることを必ず確認する。
+3. `clasp login` の許可と「Google Apps Script API」のオン（https://script.google.com/home/usersettings、アカウントごとに 1 回）はブラウザでの利用者本人の操作。エージェントは代行しない（URL を示して待つ）。
+
+- 対象: スプレッドシートに紐づいた（コンテナバインド）プロジェクト。scriptId `1tgx8rE5Od7sSl9AUSw11YbdtH00bSWBp3LbgFrsfd4pfPMlyPRe5e4vV`（`.clasp.json.example` に記載。秘密ではない）。アカウント `kiyonda69@gmail.com`。バインド型なので `clasp list` には出ない。
+- 反映: `tools\clasp_deploy.ps1` = `clasp push --force` + Pages 用デプロイ（`pages.config.json` の `apiUrl` の ID）を新バージョンに更新（URL は不変）。`-PushOnly` で push のみ。push だけでスプレッドシート（メニュー・onEdit）と HtmlService 版は新コードになるが、**Pages 版の `/exec` は固定バージョンなのでデプロイ更新まで旧コード**。ロールバックは `clasp versions` → `clasp deploy -i <ID> -V <番号>`。
+- `--force` が必要: clasp 3 は `appsscript.json` の上書きを対話で確認し、端末が無いと「Skipping push.」で何も送らない。
+- `.claspignore` は **clasp 3 では `rootDir`（`src/`）からの相対パス**で解釈される（`!*.gs` / `!*.html` / `!appsscript.json`）。旧記述 `!src/**` のままだと何も一致せず、push でリモートの全ファイルが消える状態だった。変えたら必ず `clasp status` で 15 ファイルを確認。
+- `src/appsscript.json` の `webapp.access` は **`ANYONE_ANONYMOUS`**（Pages 版の fetch に必須、本番と一致）。`MYSELF` に戻すと、次のデプロイで Pages 版が壊れる。
+- push の前に、エディタで直接書き換えられていないかを見るなら、スクラッチに `clasp clone <scriptId>` して `src/` と比較する（改行差のみなら同一）。
+- Claude デスクトップ（Windows, MSIX 版）の注意: アプリ内のシェルで実行した `npm install -g` は `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\npm` にリダイレクトされ、利用者のターミナルからは見えない（アプリ内からは `%APPDATA%\npm\clasp.cmd` で使える）。`~/.clasprc.json` は AppData 外なので共有される。また新規インストール直後のツールは、アプリやターミナルを再起動するまで PATH に載らない（`$env:Path` を Machine + User から読み直すか、フルパスで呼ぶ）。
 - 手動: スプレッドシート → 拡張機能 → Apps Script に `src/` の各ファイルを同名で作成（`.gs` → スクリプト、`.html` → HTML）。
-- 初回: エディタから `setupSpreadsheet()` を実行 → 「デプロイ > 新しいデプロイ > ウェブアプリ（自分として実行）」。アクセスは HtmlService 版だけなら「自分のみ」、Pages 版を使うなら「全員」+ `generateApiToken()`。
+- 初回（新規スプレッドシート）: エディタから `setupSpreadsheet()` を実行 → 「デプロイ > 新しいデプロイ > ウェブアプリ（自分として実行）」。アクセスは HtmlService 版だけなら「自分のみ」、Pages 版を使うなら「全員」+ `setApiPasswordPrompt`。
 - GitHub Pages: リポジトリ Settings > Pages > Deploy from a branch / main / `/docs`。
 - 詳細手順は `README.md`。
 
@@ -242,6 +257,8 @@ python tools/build_pages.py
 - 時間を小数時間（7.5h）で保存する。分単位のみ。
 - `Settings` の `carry_forward_*` を無断で変える（累計がすべてずれる）。
 - 実データ（登録記号・便名・氏名・技能証明番号）を外部サービスに送る。
+- `clasp status` で `src/` の 15 ファイルが Tracked になっているのを確かめずに `clasp push` する（`.claspignore` の誤りでリモートの全ファイルが消える）。
+- `src/appsscript.json` の `webapp.access` を `MYSELF` にする（Pages 版の API が使えなくなる）。
 
 ## 7. 今後の拡張候補（未実装）
 

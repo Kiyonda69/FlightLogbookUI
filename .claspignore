@@ -1,3 +1,5 @@
+# clasp 3: patterns are relative to rootDir (src/). Push only the Apps Script sources.
 **/**
-!src/**
+!*.gs
+!*.html
 !appsscript.json

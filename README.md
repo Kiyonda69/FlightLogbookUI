@@ -34,7 +34,27 @@ Numbers 側で追記した後に再実行すれば、CSV は差分を含む全�
    - `Code.gs` `Schema.gs` `Util.gs` `Api.gs` `Totals.gs` `Report.gs` `Import.gs` `Crew.gs` `Qual.gs` → 「スクリプト」ファイル
    - `Index.html` `Style.html` `Script.html` `CrewRules.html` → 「HTML」ファイル
    - `appsscript.json` は「プロジェクトの設定 > マニフェストを表示」で内容を置き換える
-4. （clasp を使う場合）`npm i -g @google/clasp && clasp login`、`.clasp.json.example` を `.clasp.json` にコピーして `scriptId` を入れ、`clasp push`。
+4. （clasp を使う場合）下の「clasp で Apps Script に反映する」を参照。既存の飛行日誌プロジェクトは clasp 運用中です。
+
+## clasp で Apps Script に反映する（推奨・運用中）
+
+`src/` の変更は clasp で Apps Script に送ります。**PC ごとに 1 回**セットアップが必要です（`.clasp.json` とログイン情報は git 管理外のため）。
+
+1. Node.js を入れる（`winget install OpenJS.NodeJS.LTS`）。
+2. https://script.google.com/home/usersettings で「Google Apps Script API」を **オン**（アカウントごとに 1 回）。
+3. リポジトリで実行:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools\setup_clasp.ps1
+   ```
+   clasp のインストール、`.clasp.json` の作成（`.clasp.json.example` にスクリプト ID 入り）、`clasp login`（スプレッドシートの持ち主のアカウントで許可）、`clasp status` の確認まで行います。`src/` の 15 ファイルが「Tracked」に並べば準備完了です。
+
+反映（`src/` を変えたら）:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\clasp_deploy.ps1
+```
+
+`clasp push --force` のあと、GitHub Pages が使うデプロイ（`pages.config.json` の URL）を新しいバージョンに更新します。URL は変わりません。`-PushOnly` を付けると push だけ（スプレッドシートと HtmlService 版はこれで新コードになり、Pages 版は旧バージョンのまま）。戻すときは `clasp versions` で番号を確かめて `clasp deploy -i <デプロイ ID> -V <番号>`。
 
 ### 3. 初期化とデプロイ
 
