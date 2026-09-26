@@ -302,8 +302,8 @@ check('qual sheet: still the 27-row CAP form (no extra block)', [ctx.QUAL_ROWS, 
 [q1, q2, q3, q4].forEach(function (f) { ctx.apiDeleteFlight(f.id); });
 check('qpr: cleanup', ctx.apiBootstrap().cumulative, before);
 
-// --- SIM take-offs / landings: own columns, in NO total ("(n)" on the leg's report row);
-//     only the 90-day take-off / landing experience adds them to the real counts
+// --- SIM take-offs / landings: own columns, in no logbook total ("(n)" on the leg's report row);
+//     only 直近 N 日 and the 90-day take-off / landing experience add them to the real counts
 var simLeg = function (d, fn, to, ld) { return { date: d, aircraft_type: 'B77W', registration: '', dep: 'RJTT', arr: 'RJTT', flight_no: fn, sim: 240, crew: 'SIM', sim_takeoffs: to, sim_landings: ld }; };
 var s1 = ctx.apiAddFlight(simLeg('2025-06-10', 'M21', 3, '4')).flight;
 check('sim counts stored as numbers, real counts stay 0', [s1.sim_takeoffs, s1.sim_landings, s1.takeoffs, s1.landings], [3, 4, 0, 0]);
@@ -316,7 +316,6 @@ var jul = ctx.apiGetMonth('2025-07').totals;
 check('項小計 / 前項までの合計 / 合計 carry no SIM counts', ['subtotal', 'carried', 'total'].map(function (k) { return 'sim_landings' in jul[k]; }), [false, false, false]);
 check('month totals keep the real landings only', [jul.subtotal.landings, jul.carried.landings, jul.total.landings], [0, before.landings, before.landings]);
 check('年計 carries no SIM counts', 'sim_takeoffs' in ctx.apiYearSummary('2025').yearTotal, false);
-check('直近 N 日 carries no SIM counts', 'sim_takeoffs' in ctx.apiRecency(36500), false);
 var rec = ctx.apiQualification('2025-07-15').recency;
 check('90-day experience = real + SIM (take-offs 3+2, landings 4+2)', [rec.takeoffs, rec.landings, rec.simTakeoffs, rec.simLandings, rec.status], [5, 6, 5, 6, 'ok']);
 var rec2 = ctx.apiQualification('2025-09-20').recency;
@@ -328,6 +327,14 @@ var julIdx = r25.findIndex(function (r) { return r[0] === '7月'; });
 var julTot = r25.slice(julIdx).filter(function (r) { return /計/.test(String(r[7])); }).slice(0, 3);
 check('report: July 項小計 / 前項までの合計 / 合計 landings = real counts only', julTot.map(function (r) { return r[9]; }), ['0', String(before.landings), String(before.landings)]);
 check('report: months without SIM counts keep the plain count', r25.filter(function (r) { return r[7] === '合  計'; })[0][8], String(before.takeoffs));
+var s3 = ctx.apiAddFlight(leg('2025-05-20', 'JL5', 'RJTT', 'RJOO')).flight; // real leg: 1 take-off / 1 landing, 2:00
+var r90 = ctx.apiRecency(90, '2025-07-15'), q90 = ctx.apiQualification('2025-07-15').recency;
+check('直近 90 日: take-offs / landings = real 1 + SIM (3+2 / 4+2), hours = real only', [r90.takeoffs, r90.landings, r90.simTakeoffs, r90.simLandings, r90.block, r90.count], [6, 7, 5, 6, 120, 3]);
+check('直近 90 日 = the 90-day experience (same counts, since = first day of the 90)', [r90.takeoffs, r90.landings, r90.since, q90.takeoffs, q90.landings, q90.since], [6, 7, '2025-04-17', 6, 7, '2025-04-17']);
+check('直近 N 日: exactly N days ending today (21 days includes 2025-06-10, 20 days does not)', [ctx.apiRecency(21, '2025-06-30').since, ctx.apiRecency(21, '2025-06-30').simLandings, ctx.apiRecency(20, '2025-06-30').simLandings], ['2025-06-10', 4, 0]);
+check('直近 N 日: legs after today not counted', [ctx.apiRecency(90, '2025-06-30').simLandings, ctx.apiRecency(90, '2025-06-30').landings], [4, 5]);
+check('累計 still without SIM counts', [ctx.apiBootstrap().cumulative.takeoffs, ctx.apiBootstrap().cumulative.landings], [before.takeoffs + 1, before.landings + 1]);
+ctx.apiDeleteFlight(s3.id);
 var badSim = null; try { ctx.apiAddFlight({ date: '2025-06-11', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'RJOO', dep_time: '01:00', arr_time: '02:00', pic: 60, sim_landings: 1 }); } catch (e) { badSim = e.message; }
 check('sim counts rejected on a real flight', /SIM の離着陸回数/.test(badSim || ''), true);
 var negSim = null; try { ctx.apiAddFlight(simLeg('2025-06-12', 'M21', -1, 0)); } catch (e) { negSim = e.message; }

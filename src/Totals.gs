@@ -7,8 +7,9 @@
  *   合計         (grand total)   = carried + subtotal
  * All values: takeoffs/landings = counts, everything else = minutes.
  * Totals objects hold TOTAL_KEYS only: simulator take-offs / landings (sim_takeoffs / sim_landings)
- * appear in no total (項小計 / 前項までの合計 / 合計 / 累計 / 年計 / 直近 N 日). The only place they
- * count is the 90-day take-off / landing experience of apiQualification, added to the real counts.
+ * appear in no logbook total (項小計 / 前項までの合計 / 合計 / 累計 / 年計). They count only in the
+ * recent take-offs / landings — 直近 N 日 (apiRecency) and the 90-day experience of apiQualification —
+ * added to the real counts by recentTotals_.
  */
 
 function zeroTotals_() {
@@ -92,6 +93,29 @@ function daysBetween_(a, b) { // b - a in days, both "yyyy-mm-dd"
   var pa = a.split('-').map(Number), pb = b.split('-').map(Number);
   return Math.round((Date.UTC(pb[0], pb[1] - 1, pb[2]) - Date.UTC(pa[0], pa[1] - 1, pa[2])) / 86400000);
 }
+function addDays_(dateStr, n) { // "yyyy-mm-dd" + n days
+  var d = new Date(Date.parse(dateStr + 'T00:00:00Z') + n * 86400000);
+  return d.getUTCFullYear() + '-' + pad2_(d.getUTCMonth() + 1) + '-' + pad2_(d.getUTCDate());
+}
+
+/**
+ * Totals of the `days` days ending on `today` (inclusive; `since` = the first day) with take-offs / landings =
+ * real + SIM (simTakeoffs / simLandings = the SIM part). Shared by 直近 N 日 and the 90-day experience so both
+ * count the same legs.
+ */
+function recentTotals_(flights, today, days) {
+  var since = addDays_(today, 1 - days);
+  var t = zeroTotals_(), n = 0, simTo = 0, simLd = 0;
+  flights.forEach(function (f) {
+    if (f.date < since || f.date > today) return;
+    addTotals_(t, f); n++;
+    simTo += Number(f.sim_takeoffs) || 0; simLd += Number(f.sim_landings) || 0;
+  });
+  t.takeoffs += simTo; t.landings += simLd;
+  t.simTakeoffs = simTo; t.simLandings = simLd;
+  t.count = n; t.since = since; t.days = days;
+  return t;
+}
 
 /**
  * Qualification status derived from the logbook (+ expiry dates in Settings):
@@ -114,18 +138,10 @@ function apiQualification(today) {
   out.lastFlight = { date: last, days: since, limit: QUAL_RETRAIN_DAYS,
     status: since === null ? 'unknown' : (since >= QUAL_RETRAIN_DAYS ? 'over' : (since >= QUAL_RETRAIN_DAYS - 14 ? 'warn' : 'ok')) };
 
-  // 90-day take-off / landing experience: real + SIM counts (the only place SIM counts are added)
-  var cut = new Date(); cut.setTime(Date.parse(today + 'T00:00:00Z') - QUAL_RECENCY_DAYS * 86400000);
-  var cutStr = cut.getUTCFullYear() + '-' + pad2_(cut.getUTCMonth() + 1) + '-' + pad2_(cut.getUTCDate());
-  var to = 0, ld = 0, simTo = 0, simLd = 0;
-  all.forEach(function (f) {
-    if (f.date <= cutStr || f.date > today) return;
-    to += f.takeoffs; ld += f.landings;
-    simTo += Number(f.sim_takeoffs) || 0; simLd += Number(f.sim_landings) || 0;
-  });
-  to += simTo; ld += simLd;
-  out.recency = { days: QUAL_RECENCY_DAYS, since: cutStr, takeoffs: to, landings: ld, simTakeoffs: simTo, simLandings: simLd,
-    required: QUAL_RECENCY_LANDINGS, status: ld >= QUAL_RECENCY_LANDINGS && to >= QUAL_RECENCY_LANDINGS ? 'ok' : 'over' };
+  // 90-day take-off / landing experience: real + SIM counts (same figures as 直近 90 日)
+  var rt = recentTotals_(all, today, QUAL_RECENCY_DAYS);
+  out.recency = { days: QUAL_RECENCY_DAYS, since: rt.since, takeoffs: rt.takeoffs, landings: rt.landings, simTakeoffs: rt.simTakeoffs, simLandings: rt.simLandings,
+    required: QUAL_RECENCY_LANDINGS, status: rt.landings >= QUAL_RECENCY_LANDINGS && rt.takeoffs >= QUAL_RECENCY_LANDINGS ? 'ok' : 'over' };
 
   // recurrent training codes
   var tm = today.substring(0, 7);
@@ -162,16 +178,11 @@ function apiQualification(today) {
 }
 
 /**
- * 直近 N 日 totals for the 集計 tab: hours / take-offs / landings in the trailing N days (no SIM counts;
- * the 90-day experience including SIM is apiQualification().recency).
+ * 直近 N 日 totals for the 集計 tab: hours / take-offs / landings in the N days ending today, take-offs / landings
+ * including SIM (at N = 90 the same figures as apiQualification().recency). `today` optional ("yyyy-mm-dd").
  */
-function apiRecency(days) {
+function apiRecency(days, today) {
   days = Number(days) || 90;
-  var all = readAllFlights_();
-  var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-  var cut = parseDateStr_(cutoff);
-  var t = zeroTotals_(), n = 0;
-  all.forEach(function (f) { if (f.date >= cut) { addTotals_(t, f); n++; } });
-  t.count = n; t.since = cut; t.days = days;
-  return t;
+  today = today ? parseDateStr_(today) : parseDateStr_(new Date());
+  return recentTotals_(readAllFlights_(), today, days);
 }

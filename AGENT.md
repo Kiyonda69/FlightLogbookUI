@@ -96,7 +96,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 | source / created_at / updated_at | meta | 由来 (`ui` / `csv:...` / `numbers:...`) と時刻 |
 | crew | text | 編成コード `M2/0`（パターン id / 自分の位置）, `SPLIT`, `SIM`, 旧データは空。帳票には出さない |
 | qpr | text | QPR フライトなら `'1'`、それ以外は空（`normalizeFlight_` が true / 1 / yes / ○ を `'1'` に正規化）。帳票には出さず、資格要件チェックリスト シートの **ROUTE CHK 欄**（前回実施日・年度別実施日・基準月）と集計タブの「ROUTE CHK / QPR (年度)」に反映 |
-| sim_takeoffs / sim_landings | int | SIM/FTD セッションの離着陸回数（`SIM_COUNT_KEYS`）。**どの合計（項小計・前項までの合計・合計・累計・年計・直近 N 日）にも表示・加算しない。90 日の離着陸経験（資格要件）でだけ実機の回数に加算**（ユーザー指示 2026-09-26）。帳票では SIM レグの離着陸回数欄に `(1)` のように記入 |
+| sim_takeoffs / sim_landings | int | SIM/FTD セッションの離着陸回数（`SIM_COUNT_KEYS`）。**帳票・一覧の合計（項小計・前項までの合計・合計・累計・年計）には表示・加算しない。直近 N 日（集計タブ）と 90 日の離着陸経験（資格要件）でだけ実機の回数に加算**（ユーザー指示 2026-09-26）。帳票では SIM レグの離着陸回数欄に `(1)` のように記入 |
 
 列を末尾に追加したときは `ensureFlightsHeader_`（`setupSpreadsheet` と書式修復が呼ぶほか、`readAllFlights_` / `writeFlightRows_` が列数不足を検知すると自動で呼ぶ）が既存シートに見出しとテキスト書式を追加する。コードを貼り直しただけで既存シートがそのまま使える（`qpr` 列追加時に確認）。
 
@@ -109,8 +109,8 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 飛行時間は `arr - dep`、日付跨ぎは +24h（Numbers 版の `G+(F>G)-F` と同じ）。
 - 役割時間 (pic, sic, …) は `block` を超えてはならない（`normalizeFlight_` が拒否）。
 - SIM/FTD セッションは `block = 0`, `takeoffs = landings = 0`, 登録記号は空でもよい（旧データに 11 行ある）。
-- SIM の離着陸回数は `sim_takeoffs` / `sim_landings` に入れる（`normalizeFlight_` が 0 以上の整数か、SIM/FTD セッション = 飛行時間 0 かを検査し、実飛行への入力は拒否）。`TOTAL_KEYS` には入れない: 集計オブジェクト（`zeroTotals_` / `addTotals_` / `sumTotals_`）は `TOTAL_KEYS` だけを足すので、項小計・前項までの合計・合計・累計・年計・直近 N 日に `sim_*` は一切載らない（2026-09-25 版は別キーで `2043 (12)` と表示していたが、2026-09-26 のユーザー指示で廃止）。繰越（`carry_forward_*`）も無し。SIM の回数を使うのは `apiQualification` の 90 日離着陸経験だけで、実機の `takeoffs` / `landings` に加算する（`recency.simTakeoffs` / `simLandings` が内訳）。
-- 帳票の離陸・着陸列 (I:J) は **テキスト書式 `@`**（`countText_` が文字列を書く）。SIM レグは `(3)`、合計行は実機の回数だけ（`2043`）。Sheets は `(1)` を数値 -1 と解釈するため `@` が必須（`dev/mock_gas.js` もこの変換を模擬）。UI も同じ: 一覧のレグ行は `Script.html` の `cnt()`（SIM レグ `(3)`）、合計行・ヘッダー・集計は `tcnt()`（実機のみ）。
+- SIM の離着陸回数は `sim_takeoffs` / `sim_landings` に入れる（`normalizeFlight_` が 0 以上の整数か、SIM/FTD セッション = 飛行時間 0 かを検査し、実飛行への入力は拒否）。`TOTAL_KEYS` には入れない: 集計オブジェクト（`zeroTotals_` / `addTotals_` / `sumTotals_`）は `TOTAL_KEYS` だけを足すので、項小計・前項までの合計・合計・累計・年計に `sim_*` は一切載らない（2026-09-25 版は別キーで `2043 (12)` と表示していたが、2026-09-26 のユーザー指示で廃止）。繰越（`carry_forward_*`）も無し。SIM の回数を使うのは直近の離着陸回数だけ: `recentTotals_(flights, today, days)` が今日を含む N 日間（`since` = 初日、今日より後のレグは除く）を合計し、実機の `takeoffs` / `landings` に SIM を加算する（`simTakeoffs` / `simLandings` が内訳）。集計タブの「直近 N 日」（`apiRecency`、2026-09-26 のユーザー指示で SIM を含めるよう変更）と `apiQualification` の 90 日離着陸経験が共にこれを使うので、90 日なら両者の数字は一致する。
+- 帳票の離陸・着陸列 (I:J) は **テキスト書式 `@`**（`countText_` が文字列を書く）。SIM レグは `(3)`、合計行は実機の回数だけ（`2043`）。Sheets は `(1)` を数値 -1 と解釈するため `@` が必須（`dev/mock_gas.js` もこの変換を模擬）。UI も同じ: 一覧のレグ行は `Script.html` の `cnt()`（SIM レグ `(3)`）、合計行・ヘッダー・集計は `tcnt()`（サーバーの値そのまま = 実機のみ。直近 N 日だけは実機 + SIM で、`kpi()` が離陸・着陸の下に「SIM n を含む」を添える）。
 - Apps Script はファイルの評価順を保証しないので、トップレベルで他ファイルのグローバル（例: `TOTAL_KEYS`）を使った `var` 初期化をしない（`Totals.gs` の集計関数は `TOTAL_KEYS` を関数の中で参照する）。
 - 帳票の 3 段合計:
   - 項小計 = 当月レグの合計
@@ -158,7 +158,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 根拠資料: 資格要件チェックリスト 2026.06.21RVS。飛行日誌から導けるものだけ自動判定し、それ以外は設定の有効期限入力で警告する。
 
 - 最終乗務日（block > 0 または着陸ありのレグ、SIM は除く）からの経過日数。連続 `QUAL_RETRAIN_DAYS`(60) 日以上で復帰訓練 → `over`、14 日前から `warn`。
-- 直近 `QUAL_RECENCY_DAYS`(90) 日の離陸・着陸回数 = 実機 + SIM（各 3 回未満で `over`）。UI は「SIM a / b を含む」と内訳を添える。集計タブの「直近 N 日」カード（`apiRecency`）は合計なので SIM を含めない。
+- 直近 `QUAL_RECENCY_DAYS`(90) 日（今日を含む 90 日、`since` = 初日）の離陸・着陸回数 = 実機 + SIM（各 3 回未満で `over`）。UI は「SIM a / b を含む」と内訳を添える。集計タブの「直近 N 日」カード（`apiRecency`）も同じ `recentTotals_` で SIM を含める。
 - 訓練審査 M11/M12/M21/M22: 飛行内容がそのコードで始まるレグの最終日を前回実施日とし、次回基準月 = 前回 + 12 か月、実施期間 = 基準月 ±1 か月（`due`）、超過で `over`。M12 = 技能基準月、M21 = 基準月 + 6 か月という関係は表示のみ（それぞれ独立に前回 + 12 か月で判定）。
 - 有効期限（Settings `exp_pe`, `exp_pea`, `exp_english`, `exp_competency`, `exp_passport`, `exp_visa`）: 残日数と警告閾値（PE/PEA 45 日、英語・特定操縦技能 90 日、パスポート/VISA 180 日 = `QUAL_EXPIRIES`）。これらの設定変更では年次シートは再生成しない。
 - `apiQualification(today)` は `today` を省略可（テストでは固定日を渡す）。リスト型の期限（航空英語・特定操縦技能）は最新日付で判定。

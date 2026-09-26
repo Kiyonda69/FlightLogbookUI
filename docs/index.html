@@ -79,6 +79,7 @@
   .kpi div { background: #f8f9fa; border-radius: 6px; padding: 8px 10px; }
   .kpi label { margin: 0; }
   .kpi b { font-size: 18px; font-family: "SF Mono", Consolas, monospace; }
+  .kpi small { display: block; font-size: 11px; color: var(--muted); }
   .savebar { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #fffdf5; border: 1px solid #f0d78c; border-radius: 8px; padding: 10px 16px; margin-bottom: 14px; box-shadow: 0 -2px 8px rgba(0,0,0,.06); }
   .tag { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: #e8eaed; color: #3c4043; font-family: "SF Mono", Consolas, monospace; }
   .q { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
@@ -514,7 +515,7 @@ function cnt(f, k) {
   if (!s) return n ? String(n) : '';
   return (n ? n + ' ' : '') + '(' + s + ')';
 }
-/** A count in a total (項小計 / 合計 / 累計 / 年計 / 直近 N 日): real take-offs / landings only, never SIM. */
+/** A count in a total as the server sums it: real only in 項小計 / 合計 / 累計 / 年計, real + SIM in 直近 N 日. */
 function tcnt(t, k) { return String(Number(t[k]) || 0); }
 /** UI label for a column: the JCAB label from the server, with "SIC" shown as "CO" in the UI. */
 function lbl(k) { return (COLS[k] ? COLS[k].label : k).replace(/SIC/g, 'CO'); }
@@ -992,10 +993,12 @@ function fillYears() {
   years[S.boot.today.substring(0, 4)] = true;
   Object.keys(years).sort().reverse().forEach(function (y) { var o = document.createElement('option'); o.value = y; o.textContent = y + '年'; sel.appendChild(o); });
 }
+var SIM_PART = { takeoffs: 'simTakeoffs', landings: 'simLandings' }; // 直近 N 日: the SIM part of a count
 function kpi(el, t, keys) {
   el.innerHTML = keys.map(function (k) {
     var v = k === 'takeoffs' || k === 'landings' ? tcnt(t, k) : hm(t[k]);
-    return '<div><label>' + esc(lbl(k)) + '</label><b>' + v + '</b></div>';
+    var sim = SIM_PART[k] ? Number(t[SIM_PART[k]]) || 0 : 0;
+    return '<div><label>' + esc(lbl(k)) + '</label><b>' + v + '</b>' + (sim ? '<small>SIM ' + sim + ' を含む</small>' : '') + '</div>';
   }).join('');
 }
 var KPI_KEYS = ['block', 'pic', 'sic', 'solo_sic', 'pus', 'pic_xc', 'sic_xc', 'pic_night', 'sic_night', 'ifr', 'hood', 'sim', 'takeoffs', 'landings'];

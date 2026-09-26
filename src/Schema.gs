@@ -50,8 +50,8 @@ var FLIGHT_COLUMNS = [
   { key: 'updated_at',      kind: 'meta', label: 'Updated' },
   { key: 'crew',            kind: 'text', label: '編成' },  // "M2/0" = pattern id / my index (see CrewRules.html); "SPLIT", "SIM" or blank
   { key: 'qpr',             kind: 'text', label: 'QPR' },   // '1' when the leg was a QPR flight (資格要件チェックリストの QPR 欄に反映), else ''
-  { key: 'sim_takeoffs',    kind: 'int',  label: 'SIM 離陸' }, // SIM/FTD session take-offs: in no total, "(n)" on the leg's report row
-  { key: 'sim_landings',    kind: 'int',  label: 'SIM 着陸' }  // SIM/FTD session landings: in no total, "(n)" on the leg's report row
+  { key: 'sim_takeoffs',    kind: 'int',  label: 'SIM 離陸' }, // SIM/FTD session take-offs: only in 直近 N 日 / 90-day experience, "(n)" on the leg's report row
+  { key: 'sim_landings',    kind: 'int',  label: 'SIM 着陸' }  // SIM/FTD session landings: only in 直近 N 日 / 90-day experience, "(n)" on the leg's report row
 ];
 
 /** Keys that are summed for 項小計 / 前項までの合計 / 合計. Order = report column order. */
@@ -63,10 +63,10 @@ var TOTAL_KEYS = [
 ];
 
 /**
- * Simulator take-off / landing counts. They are in NO total (項小計 / 前項までの合計 / 合計 / 累計 /
- * 年計 / 直近 N 日; not part of TOTAL_KEYS / carry_forward). They count only in the 90-day take-off /
- * landing experience (apiQualification), added to the real counts. The report prints a SIM leg's
- * counts in parentheses in its 離着陸回数 cells ("(1)").
+ * Simulator take-off / landing counts. They are in no logbook total (項小計 / 前項までの合計 / 合計 /
+ * 累計 / 年計; not part of TOTAL_KEYS / carry_forward). They count only in the recent take-offs /
+ * landings — 直近 N 日 (apiRecency) and the 90-day experience (apiQualification) — added to the real
+ * counts (recentTotals_). The report prints a SIM leg's counts in parentheses in its 離着陸回数 cells ("(1)").
  * SIM_COUNT_OF maps each real count key to its simulator counterpart.
  */
 var SIM_COUNT_KEYS = ['sim_takeoffs', 'sim_landings'];
