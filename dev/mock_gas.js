@@ -1,6 +1,6 @@
 /**
  * mock_gas.js — minimal in-memory stand-ins for the Apps Script globals used by src/*.gs
- * (SpreadsheetApp, Utilities, LockService, HtmlService). Used by tools/test_logic.js (Node)
+ * (SpreadsheetApp, Utilities, LockService, HtmlService, ScriptApp triggers). Used by tools/test_logic.js (Node)
  * and dev/serve.py (browser preview). NOT deployed to Apps Script.
  */
 (function (g) {
@@ -197,6 +197,22 @@
       o.setMimeType = function (m) { o._mime = m; return o; };
       o.getContent = function () { return o._text; };
       return o;
+    }
+  };
+  // ScriptApp mock: installable triggers are kept in g.__mockTriggers (handler + time spec).
+  g.__mockTriggers = [];
+  g.ScriptApp = {
+    getProjectTriggers: function () { return g.__mockTriggers.slice(); },
+    deleteTrigger: function (t) { g.__mockTriggers = g.__mockTriggers.filter(function (x) { return x !== t; }); },
+    newTrigger: function (fn) {
+      var spec = { handler: fn };
+      var b = {
+        timeBased: function () { return b; },
+        everyDays: function (n) { spec.everyDays = n; return b; },
+        atHour: function (h) { spec.atHour = h; return b; },
+        create: function () { var t = { spec: spec, getHandlerFunction: function () { return fn; } }; g.__mockTriggers.push(t); return t; }
+      };
+      return b;
     }
   };
   g.Logger = { log: function () { if (g.console) g.console.log.apply(g.console, arguments); } };

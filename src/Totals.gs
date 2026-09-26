@@ -6,28 +6,25 @@
  *   前項までの合計 (carried)      = carry_forward (Settings) + Σ flights before M
  *   合計         (grand total)   = carried + subtotal
  * All values: takeoffs/landings = counts, everything else = minutes.
- * Totals objects also carry sim_takeoffs / sim_landings (SIM_COUNT_KEYS), summed on their own:
- * simulator counts are never added into takeoffs / landings and have no carry-forward.
+ * Totals objects hold TOTAL_KEYS only: simulator take-offs / landings (sim_takeoffs / sim_landings)
+ * appear in no total (項小計 / 前項までの合計 / 合計 / 累計 / 年計 / 直近 N 日). The only place they
+ * count is the 90-day take-off / landing experience of apiQualification, added to the real counts.
  */
-
-// built on first use: Apps Script does not guarantee that Schema.gs is evaluated before this file
-var summedKeysCache_ = null;
-function summedKeys_() { return summedKeysCache_ || (summedKeysCache_ = TOTAL_KEYS.concat(SIM_COUNT_KEYS)); }
 
 function zeroTotals_() {
   var t = {};
-  summedKeys_().forEach(function (k) { t[k] = 0; });
+  TOTAL_KEYS.forEach(function (k) { t[k] = 0; });
   return t;
 }
 
 function addTotals_(acc, f) {
-  summedKeys_().forEach(function (k) { acc[k] += Number(f[k]) || 0; });
+  TOTAL_KEYS.forEach(function (k) { acc[k] += Number(f[k]) || 0; });
   return acc;
 }
 
 function sumTotals_(a, b) {
   var t = {};
-  summedKeys_().forEach(function (k) { t[k] = (Number(a[k]) || 0) + (Number(b[k]) || 0); });
+  TOTAL_KEYS.forEach(function (k) { t[k] = (Number(a[k]) || 0) + (Number(b[k]) || 0); });
   return t;
 }
 
@@ -99,7 +96,7 @@ function daysBetween_(a, b) { // b - a in days, both "yyyy-mm-dd"
 /**
  * Qualification status derived from the logbook (+ expiry dates in Settings):
  *  - last flight date / days since (復帰訓練 if >= QUAL_RETRAIN_DAYS)
- *  - takeoffs & landings in the last QUAL_RECENCY_DAYS days
+ *  - takeoffs & landings in the last QUAL_RECENCY_DAYS days, real + SIM (simTakeoffs / simLandings = the SIM part)
  *  - last date of each recurrent training code (M11/M12/M21/M22 in 飛行内容) and the next window
  *  - tracked expiries with days remaining
  * `today` (optional "yyyy-mm-dd") makes the result testable.
@@ -117,13 +114,18 @@ function apiQualification(today) {
   out.lastFlight = { date: last, days: since, limit: QUAL_RETRAIN_DAYS,
     status: since === null ? 'unknown' : (since >= QUAL_RETRAIN_DAYS ? 'over' : (since >= QUAL_RETRAIN_DAYS - 14 ? 'warn' : 'ok')) };
 
-  // 90-day recency
+  // 90-day take-off / landing experience: real + SIM counts (the only place SIM counts are added)
   var cut = new Date(); cut.setTime(Date.parse(today + 'T00:00:00Z') - QUAL_RECENCY_DAYS * 86400000);
   var cutStr = cut.getUTCFullYear() + '-' + pad2_(cut.getUTCMonth() + 1) + '-' + pad2_(cut.getUTCDate());
-  var to = 0, ld = 0;
-  all.forEach(function (f) { if (f.date > cutStr && f.date <= today) { to += f.takeoffs; ld += f.landings; } });
-  out.recency = { days: QUAL_RECENCY_DAYS, since: cutStr, takeoffs: to, landings: ld, required: QUAL_RECENCY_LANDINGS,
-    status: ld >= QUAL_RECENCY_LANDINGS && to >= QUAL_RECENCY_LANDINGS ? 'ok' : 'over' };
+  var to = 0, ld = 0, simTo = 0, simLd = 0;
+  all.forEach(function (f) {
+    if (f.date <= cutStr || f.date > today) return;
+    to += f.takeoffs; ld += f.landings;
+    simTo += Number(f.sim_takeoffs) || 0; simLd += Number(f.sim_landings) || 0;
+  });
+  to += simTo; ld += simLd;
+  out.recency = { days: QUAL_RECENCY_DAYS, since: cutStr, takeoffs: to, landings: ld, simTakeoffs: simTo, simLandings: simLd,
+    required: QUAL_RECENCY_LANDINGS, status: ld >= QUAL_RECENCY_LANDINGS && to >= QUAL_RECENCY_LANDINGS ? 'ok' : 'over' };
 
   // recurrent training codes
   var tm = today.substring(0, 7);
@@ -160,8 +162,8 @@ function apiQualification(today) {
 }
 
 /**
- * Recency check used by the UI header: hours/landings in the trailing N days.
- * (e.g. 90-day landings for passenger-carrying currency).
+ * 直近 N 日 totals for the 集計 tab: hours / take-offs / landings in the trailing N days (no SIM counts;
+ * the 90-day experience including SIM is apiQualification().recency).
  */
 function apiRecency(days) {
   days = Number(days) || 90;

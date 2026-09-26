@@ -50,8 +50,8 @@ var FLIGHT_COLUMNS = [
   { key: 'updated_at',      kind: 'meta', label: 'Updated' },
   { key: 'crew',            kind: 'text', label: '編成' },  // "M2/0" = pattern id / my index (see CrewRules.html); "SPLIT", "SIM" or blank
   { key: 'qpr',             kind: 'text', label: 'QPR' },   // '1' when the leg was a QPR flight (資格要件チェックリストの QPR 欄に反映), else ''
-  { key: 'sim_takeoffs',    kind: 'int',  label: 'SIM 離陸' }, // SIM/FTD session take-offs: NOT in 離陸 totals, "(n)" on the report
-  { key: 'sim_landings',    kind: 'int',  label: 'SIM 着陸' }  // SIM/FTD session landings: NOT in 着陸 totals, "(n)" on the report
+  { key: 'sim_takeoffs',    kind: 'int',  label: 'SIM 離陸' }, // SIM/FTD session take-offs: in no total, "(n)" on the leg's report row
+  { key: 'sim_landings',    kind: 'int',  label: 'SIM 着陸' }  // SIM/FTD session landings: in no total, "(n)" on the leg's report row
 ];
 
 /** Keys that are summed for 項小計 / 前項までの合計 / 合計. Order = report column order. */
@@ -63,9 +63,10 @@ var TOTAL_KEYS = [
 ];
 
 /**
- * Simulator take-off / landing counts. They are summed SEPARATELY: never added to takeoffs /
- * landings, not part of TOTAL_KEYS / carry_forward. The report prints them in parentheses in the
- * 離着陸回数 cells — a SIM leg as "(1)", a total row as "2043 (12)".
+ * Simulator take-off / landing counts. They are in NO total (項小計 / 前項までの合計 / 合計 / 累計 /
+ * 年計 / 直近 N 日; not part of TOTAL_KEYS / carry_forward). They count only in the 90-day take-off /
+ * landing experience (apiQualification), added to the real counts. The report prints a SIM leg's
+ * counts in parentheses in its 離着陸回数 cells ("(1)").
  * SIM_COUNT_OF maps each real count key to its simulator counterpart.
  */
 var SIM_COUNT_KEYS = ['sim_takeoffs', 'sim_landings'];
@@ -245,8 +246,12 @@ function onOpen() {
     .addItem('API パスワードを設定', 'setApiPasswordPrompt')
     .addItem('年次帳票をすべて再生成', 'rebuildAllYearReports')
     .addItem('資格要件チェックリストを再生成', 'apiRebuildQualSheet')
+    .addItem('チェックリストの年度切替を自動化 (初回のみ)', 'setupQualFiscalYearTrigger')
     .addItem('Flights シートの書式を修復', 'repairFlightsSheetFormats')
     .addItem('Flights シートを検査 (直接編集のチェック)', 'validateFlightsSheet')
     .addItem('マスター再構築 (Flights から)', 'rebuildMastersFromFlights')
     .addToUi();
+  // New fiscal year → roll the checklist over. A simple trigger may not be allowed every service;
+  // the daily trigger and apiBootstrap do the same check, so a failure here is harmless.
+  try { checkQualFiscalYear_(); } catch (e) { /* ignore */ }
 }

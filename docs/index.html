@@ -508,12 +508,14 @@ function hm(min, blank) {
   return neg + Math.floor(min / 60) + ':' + ('0' + (min % 60)).slice(-2);
 }
 function hours1(min) { return (Number(min || 0) / 60).toFixed(1); }
-/** 離陸 / 着陸 display: real count plus the SIM count in parentheses ("(1)", "2043 (12)"), as on the report. */
-function cnt(t, k, keepZero) {
-  var n = Number(t[k]) || 0, s = Number(t['sim_' + k]) || 0;
-  if (!s) return keepZero ? String(n) : (n ? String(n) : '');
-  return (n || keepZero ? n + ' ' : '') + '(' + s + ')';
+/** 離陸 / 着陸 of one leg: the real count, a SIM leg's count in parentheses ("(1)"), as on the report. */
+function cnt(f, k) {
+  var n = Number(f[k]) || 0, s = Number(f['sim_' + k]) || 0;
+  if (!s) return n ? String(n) : '';
+  return (n ? n + ' ' : '') + '(' + s + ')';
 }
+/** A count in a total (項小計 / 合計 / 累計 / 年計 / 直近 N 日): real take-offs / landings only, never SIM. */
+function tcnt(t, k) { return String(Number(t[k]) || 0); }
 /** UI label for a column: the JCAB label from the server, with "SIC" shown as "CO" in the UI. */
 function lbl(k) { return (COLS[k] ? COLS[k].label : k).replace(/SIC/g, 'CO'); }
 /** "0745" / "745" → "07:45" (clock) ; for durations "0130" → "1:30". Other values are returned unchanged. */
@@ -601,7 +603,7 @@ function renderHeader(c) {
     '<span>CO <b>' + hm(c.sic + c.solo_sic) + '</b></span>' +
     '<span>夜間 <b>' + hm(c.pic_night + c.sic_night) + '</b></span>' +
     '<span>計器 <b>' + hm(c.ifr) + '</b></span>' +
-    '<span>離陸/着陸 <b>' + cnt(c, 'takeoffs', true) + ' / ' + cnt(c, 'landings', true) + '</b></span>' +
+    '<span>離陸/着陸 <b>' + tcnt(c, 'takeoffs') + ' / ' + tcnt(c, 'landings') + '</b></span>' +
     (loadPending().length ? '<span>未保存 <b class="pend">' + loadPending().length + '</b></span>' : '');
 }
 
@@ -953,7 +955,7 @@ function renderTable(table, flights, opts) {
       return '<tr class="total">' + cols.map(function (ck, ci) {
         if (ci === 7) return '<td>' + lab[k] + '</td>';
         if (TOTAL_KEYS.indexOf(ck) < 0) return '<td></td>';
-        return '<td class="num">' + (COLS[ck].kind === 'int' ? cnt(t[k], ck, true) : hm(t[k][ck])) + '</td>';
+        return '<td class="num">' + (COLS[ck].kind === 'int' ? tcnt(t[k], ck) : hm(t[k][ck])) + '</td>';
       }).join('') + '<td></td></tr>';
     }).join('') + '</tfoot>';
   }
@@ -992,7 +994,7 @@ function fillYears() {
 }
 function kpi(el, t, keys) {
   el.innerHTML = keys.map(function (k) {
-    var v = k === 'takeoffs' || k === 'landings' ? cnt(t, k, true) : hm(t[k]);
+    var v = k === 'takeoffs' || k === 'landings' ? tcnt(t, k) : hm(t[k]);
     return '<div><label>' + esc(lbl(k)) + '</label><b>' + v + '</b></div>';
   }).join('');
 }
@@ -1005,9 +1007,9 @@ function loadSummary() {
     var keys = ['block', 'pic', 'sic', 'pic_night', 'sic_night', 'ifr', 'sim', 'takeoffs', 'landings'];
     var h = '<thead><tr><th>月</th><th class="num">レグ</th>' + keys.map(function (k) { return '<th class="num">' + esc(shortLabel(k)) + '</th>'; }).join('') + '</tr></thead><tbody>';
     r.months.forEach(function (m) {
-      h += '<tr><td>' + m.ym + '</td><td class="num">' + m.count + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? cnt(m, k, true) : hm(m[k], true)) + '</td>'; }).join('') + '</tr>';
+      h += '<tr><td>' + m.ym + '</td><td class="num">' + m.count + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? tcnt(m, k) : hm(m[k], true)) + '</td>'; }).join('') + '</tr>';
     });
-    h += '<tr class="total"><td>年計</td><td class="num">' + r.months.reduce(function (a, m) { return a + m.count; }, 0) + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? cnt(r.yearTotal, k, true) : hm(r.yearTotal[k])) + '</td>'; }).join('') + '</tr></tbody>';
+    h += '<tr class="total"><td>年計</td><td class="num">' + r.months.reduce(function (a, m) { return a + m.count; }, 0) + '</td>' + keys.map(function (k) { return '<td class="num">' + (k === 'takeoffs' || k === 'landings' ? tcnt(r.yearTotal, k) : hm(r.yearTotal[k])) + '</td>'; }).join('') + '</tr></tbody>';
     $('#sumTable').innerHTML = h;
     var th = '<thead><tr><th>型式</th><th class="num">レグ</th><th class="num">飛行時間</th><th class="num">時間 (h)</th></tr></thead><tbody>';
     Object.keys(r.byType).sort().forEach(function (t) { th += '<tr><td>' + esc(t) + '</td><td class="num">' + r.byType[t].legs + '</td><td class="num">' + hm(r.byType[t].block) + '</td><td class="num">' + hours1(r.byType[t].block) + '</td></tr>'; });
@@ -1033,7 +1035,8 @@ function loadQualification() {
     var lf = q.lastFlight;
     h += qItem(lf.status, '最終乗務からの経過', lf.date ? lf.days + ' 日' : '記録なし', lf.date ? '最終乗務 ' + lf.date : '');
     var rc = q.recency;
-    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回', rc.since + ' 以降');
+    h += qItem(rc.status, '直近 ' + rc.days + ' 日の離着陸', rc.takeoffs + ' / ' + rc.landings + ' 回',
+      rc.since + ' 以降' + (rc.simTakeoffs || rc.simLandings ? '・SIM ' + rc.simTakeoffs + ' / ' + rc.simLandings + ' を含む' : ''));
     q.training.forEach(function (t) {
       h += qItem(t.status, t.label, t.last ? '前回 ' + t.last : '記録なし',
         t.last ? '次回 基準月 ' + t.baseMonth + ' (' + t.windowFrom + ' 〜 ' + t.windowUntil + ') ' + Q_STATUS[t.status] : '');
@@ -1073,7 +1076,7 @@ var EXP_KEYS = [
   ['department', '所属', 'text'], ['employee_no', '社員番号', 'text'],
   ['base_skill', '技能基準月 (CACK / M12)', 'month'], ['base_route', 'ROUTE CHK 基準月', 'month'], ['base_dit', 'DIT 基準月', 'month'],
   ['dates_cack', 'CACK 実施日', 'list'], ['dates_route', 'ROUTE CHK 実施日', 'list'], ['dates_dit', 'DIT 実施日', 'list'], ['dates_age63', '63歳以上68歳未満付加訓練 実施日', 'list'],
-  ['dates_pe', 'PE 実施日', 'list'], ['exp_pe', 'PE 有効期限', 'date'], ['dates_pea', 'PEA 実施日', 'list'], ['exp_pea', 'PEA 有効期限', 'date'],
+  ['dates_pe', 'PE 実施日', 'list'], ['exp_pe', 'PE 有効期限', 'list'], ['dates_pea', 'PEA 実施日', 'list'], ['exp_pea', 'PEA 有効期限', 'list'],
   ['exp_english', '航空英語能力証明 有効期限 (最大 2)', 'list'], ['exp_competency', '特定操縦技能審査 期間満了日 (最大 5)', 'list'],
   ['exp_passport', 'パスポート 有効期限', 'date'], ['exp_visa', 'VISA 有効期限', 'date']
 ];

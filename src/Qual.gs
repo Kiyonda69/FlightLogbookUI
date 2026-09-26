@@ -1,7 +1,8 @@
 /**
- * Qual.gs — 資格要件チェックリスト sheet: an exact reproduction of the CAP checklist
- * (資格_要件チェックリスト_20260621.xlsx, sheet "CAP", A1:J27) whose entries are filled from the
- * logbook and Settings and refreshed after every write (refreshYearSheets_) and settings change.
+ * Qual.gs — 資格要件チェックリスト sheet: the CAP checklist (資格_要件チェックリスト_20260621.xlsx,
+ * sheet "CAP", A1:J27) with the column widths / row heights of the live sheet as the user adjusted
+ * them (read from the sheet 2026-09-26), filled from the logbook and Settings and refreshed after
+ * every write (refreshYearSheets_), every settings change and when the fiscal year changes.
  *
  * Data sources
  *   所属 / 社員番号 / 氏名          Settings department / employee_no / pilot_name
@@ -11,26 +12,41 @@
  *                                  CACK: 飛行内容 "CACK" or "M11" + Settings dates_cack
  *                                  ROUTE CHK: legs flagged QPR (qpr column) + 飛行内容 "ROUTE…" + Settings dates_route
  *                                  DIT / 63歳付加訓練 / PE / PEA: Settings dates_* (comma lists)
- *   有効期限 (rows 5-10, 12-15)     Settings exp_pe, exp_pea, exp_english (≤2), exp_competency (≤5),
- *                                  exp_passport, exp_visa
- *   row 5 = 前回実施日 (latest), rows 6-10 = 年度 (FY-1 .. FY+3, April-March) 実施日
+ *   有効期限 (rows 5-10, 12-15)     Settings exp_pe, exp_pea (comma lists), exp_english (≤2),
+ *                                  exp_competency (≤5), exp_passport, exp_visa
+ *
+ * Rows 5-10 (fiscal year = April-March, FY = the current one, as on the paper form)
+ *   row 5 前回実施日 = the entries of FY-1; rows 6-10 = FY .. FY+4 実施日 ("2026年度／実施日" …).
+ *   An entry counts for the fiscal year of the base-month occurrence it was done for (実施月 =
+ *   基準月 -1 … +1): an M12 of base month April done in March, or a PE taken 45-30 days before an
+ *   April expiry, belongs to that April's fiscal year (entryFy_). DIT (never moved across fiscal
+ *   years) and 63歳付加訓練 use the date's own fiscal year. Several entries in one year: the latest.
+ *   PE / PEA: each 実施日 is shown with the expiry it produced (pairExpiries_).
+ *
+ * Fiscal-year roll-over: Script Properties qual_fy = the FY the sheet was built for.
+ * checkQualFiscalYear_ rebuilds when it differs — from the daily time trigger qualFiscalYearTick
+ * (installed by the menu item / apiBootstrap), apiBootstrap and onOpen.
  *
  * Layout: values are written with ONE setValues; styles/merges/widths only when the sheet is new,
  * forced, or QUAL_DESIGN_VERSION changed (remembered in Script Properties).
  */
 
 var QUAL_SHEET = '資格要件チェックリスト';
-var QUAL_DESIGN_VERSION = 3;   // 3: QPR moved into the ROUTE CHK column (extra block removed)
+var QUAL_DESIGN_VERSION = 4;   // 4: widths / heights of the user-adjusted sheet, A19 M21 / A20 M22 unmerged
 var QUAL_LAYOUT_KEY = 'qual_layout';
+var QUAL_FY_KEY = 'qual_fy';               // fiscal year the sheet was last built for
+var QUAL_TICK_FN = 'qualFiscalYearTick';   // daily time-driven trigger
+var QUAL_TRIGGER_CACHE = 'qual_trigger_ok';
 var QUAL_ROWS = 27, QUAL_COLS = 10;      // the CAP form itself (A1:J27)
 var QUAL_GREY = '#c0c0c0';
 var QUAL_FONT = 'Noto Sans JP';
 var QUAL_DATE_BLANK = '        年       月       日';
 var QUAL_EXP_BLANK = '有効期限　　 　年　　 月　 　日\n実施日　　　 　 年　 　月　 　日';
 
-// Excel column widths (chars) → px, row heights (pt) → px
-var QUAL_COL_PX = [231, 148, 96, 96, 96, 96, 96, 184, 213, 96];
-var QUAL_ROW_PX = [50, 47, 36, 36, 43, 43, 38, 43, 44, 41, 36, 29, 29, 29, 29, 52, 28, 28, 28, 28, 89, 55, 28, 28, 28, 63, 77];
+// px, as in the live sheet after the user's adjustment: C..G as wide as B (a date fits on one line),
+// I / J wide enough for the PE / PEA texts, rows 4-10 all 41
+var QUAL_COL_PX = [231, 148, 148, 148, 148, 148, 148, 184, 274, 274];
+var QUAL_ROW_PX = [50, 47, 36, 41, 41, 41, 41, 41, 41, 41, 36, 29, 29, 29, 29, 52, 28, 28, 28, 28, 89, 55, 28, 28, 28, 63, 77];
 
 var QUAL_NOTES = [
   ['CACK', '昇格技能審査、型式移行技能審査、復帰技能審査に合格した日の属する月。'],
@@ -71,8 +87,56 @@ function monthPlus_(v, n) { // 'M月' + n → 'M月'
   return (((Number(m[1]) - 1 + n) % 12 + 12) % 12 + 1) + '月';
 }
 function fyOf_(d) { var y = Number(d.substring(0, 4)), m = Number(d.substring(5, 7)); return m >= 4 ? y : y - 1; }
-function latest_(list) { return list.length ? list[list.length - 1] : ''; }
-function inFy_(list, fy) { return list.filter(function (d) { return fyOf_(d) === fy; }); }
+function latest_(list) { return list && list.length ? list[list.length - 1] : ''; }
+function monthNum_(label) { var m = String(label || '').match(/(\d{1,2})月/); return m ? Number(m[1]) : 0; }
+
+/**
+ * Fiscal year an entry dated `d` counts for: the fiscal year of the nearest occurrence of the base
+ * month (1-12) when it is within ±2 months, else (or with no base month) the date's own one.
+ * e.g. base month 4, d = 2026-03-02 → April 2026 → 2026.
+ */
+function entryFy_(d, baseMonth) {
+  var y = Number(d.substring(0, 4)), at = y * 12 + Number(d.substring(5, 7));
+  if (baseMonth) {
+    for (var by = y - 1; by <= y + 1; by++) {
+      if (Math.abs(by * 12 + baseMonth - at) <= 2) return baseMonth >= 4 ? by : by - 1;
+    }
+  }
+  return fyOf_(d);
+}
+
+/** { fy: [dates ascending] } */
+function byFy_(dates, baseMonth) {
+  var out = {};
+  dates.forEach(function (d) { var fy = entryFy_(d, baseMonth); (out[fy] = out[fy] || []).push(d); });
+  return out;
+}
+
+/**
+ * PE / PEA: { fy: expiry } — each 実施日 gets the first unused expiry more than 90 days after it
+ * (the certificate that examination produced; the old one ran out within ~45 days of it). An
+ * expiry with no listed 実施日 goes to the fiscal year its 1-year validity began.
+ */
+function pairExpiries_(dates, exps, baseMonth) {
+  var out = {}, used = {}, paired = {};
+  dates.forEach(function (d) {
+    for (var i = 0; i < exps.length; i++) {
+      if (!used[i] && daysBetween_(d, exps[i]) > 90) {
+        used[i] = true;
+        var fy = entryFy_(d, baseMonth);
+        out[fy] = exps[i]; paired[fy] = true;
+        return;
+      }
+    }
+  });
+  exps.forEach(function (e, i) {
+    if (used[i]) return;
+    var fy = fyOf_((Number(e.substring(0, 4)) - 1) + e.substring(4));
+    if (!paired[fy]) out[fy] = e;
+  });
+  return out;
+}
+
 function slots_(list, n) { // '(1) 2026 / 03 / 31 　 (2)    /    /   '
   var out = [];
   for (var i = 0; i < n; i++) out.push('(' + (i + 1) + ') ' + (list[i] ? slashDate_(list[i]) : '     /     /     '));
@@ -92,11 +156,11 @@ function logbookEventDates_(all, codes) {
   return out.sort();
 }
 
-/** All the data the checklist needs, also returned by apiQualificationSheetData for the UI. */
+/** All the data the checklist needs (also returned by apiQualificationSheetData). `today` optional. */
 function qualSheetData_(all, today) {
   var st = getSettings_();
   all = all || sortFlights_(readAllFlights_());
-  today = today || parseDateStr_(new Date());
+  today = today ? parseDateStr_(today) : parseDateStr_(new Date());
   var fy = fyOf_(today);
   var cols = [
     { key: 'cack', dates: dateList_(st.dates_cack).concat(logbookEventDates_(all, ['CACK', 'M11'])).sort() },
@@ -110,13 +174,21 @@ function qualSheetData_(all, today) {
     { key: 'pea', dates: dateList_(st.dates_pea), exp: dateList_(st.exp_pea) }
   ];
   var baseSkill = monthLabel_(st.base_skill) !== '月' ? monthLabel_(st.base_skill) : monthLabel_(latest_(cols[1].dates) || latest_(cols[0].dates));
+  var base = { skill: baseSkill, m21: monthPlus_(baseSkill, 6),
+    route: monthLabel_(st.base_route) !== '月' ? monthLabel_(st.base_route) : monthLabel_(latest_(cols[4].dates)),
+    dit: monthLabel_(st.base_dit) !== '月' ? monthLabel_(st.base_dit) : monthLabel_(latest_(cols[5].dates)),
+    pe: monthLabel_(latest_(cols[7].exp)), pea: monthLabel_(latest_(cols[8].exp)) };
+  // base month each column's entries are counted against; DIT and 63歳 go by their own date
+  var colBase = [base.skill, base.skill, base.m21, base.m21, base.route, '', '', base.pe, base.pea];
+  cols.forEach(function (col, i) {
+    var bm = monthNum_(colBase[i]);
+    col.byFy = byFy_(col.dates, bm);
+    if (col.exp) col.expByFy = pairExpiries_(col.dates, col.exp, bm);
+  });
   return {
-    today: today, fy: fy, fiscalYears: [fy - 1, fy, fy + 1, fy + 2, fy + 3],
+    today: today, fy: fy, fiscalYears: [fy, fy + 1, fy + 2, fy + 3, fy + 4],   // rows 6-10; row 5 = FY-1
     department: st.department || '', employee_no: st.employee_no || '', pilot_name: st.pilot_name || '',
-    base: { skill: baseSkill, m21: monthPlus_(baseSkill, 6),
-      route: monthLabel_(st.base_route) !== '月' ? monthLabel_(st.base_route) : monthLabel_(latest_(cols[4].dates)),
-      dit: monthLabel_(st.base_dit) !== '月' ? monthLabel_(st.base_dit) : monthLabel_(latest_(cols[5].dates)),
-      pe: monthLabel_(latest_(cols[7].exp)), pea: monthLabel_(latest_(cols[8].exp)) },
+    base: base,
     cols: cols,
     english: dateList_(st.exp_english), competency: dateList_(st.exp_competency),
     passport: dateList_(st.exp_passport), visa: dateList_(st.exp_visa)
@@ -139,25 +211,19 @@ function planQualSheet_(data) {
   g[3] = ['実施月', '-1 ～ + 1 月', '-1 ～ + 1 月', '-1 ～ + 1 月', '-1 ～ + 1 月', '-1 ～ + 1 月', '-1 ～ + 1 月',
     '初期：63歳誕生日前1ヶ月内\n定期：初期訓練後年1回', '有効期限の45 日～30 日前', 'PEAはPE受検月の6ヶ月後\nPEは有効期限の45日～30日前'];
 
-  var expCell = function (col, dates, fyOrNull) {
-    var exp = fyOrNull === null ? latest_(col.exp) : (inFy_(col.dates, fyOrNull).length ? latest_(col.exp) : '');
-    var did = fyOrNull === null ? latest_(col.dates) : latest_(inFy_(col.dates, fyOrNull));
+  var expCell = function (col, fy) {
+    var exp = col.expByFy[fy] || '', did = latest_(col.byFy[fy]);
     if (!exp && !did) return QUAL_EXP_BLANK;
     return '有効期限 ' + (exp ? jpDate_(exp) : '　年　月　日') + '\n実施日 ' + (did ? jpDate_(did) : '　年　月　日');
   };
-  // row 5: 前回実施日 (latest)
-  g[4][0] = '前回実施日';
-  for (var c = 0; c < 7; c++) g[4][c + 1] = jpDate_(latest_(data.cols[c].dates));
-  g[4][8] = expCell(data.cols[7], null, null);
-  g[4][9] = expCell(data.cols[8], null, null);
-  // rows 6-10: fiscal years
-  data.fiscalYears.forEach(function (fy, i) {
-    var r = 5 + i;
-    g[r][0] = fy + '年度\n実施日';
-    for (var c = 0; c < 7; c++) g[r][c + 1] = jpDate_(latest_(inFy_(data.cols[c].dates, fy)));
-    if (i >= 2) g[r][7] = '－';          // 63歳: rows 8-10 are fixed "－" in the form
-    g[r][8] = expCell(data.cols[7], null, fy);
-    g[r][9] = expCell(data.cols[8], null, fy);
+  // row 5 = 前回実施日 (the previous fiscal year), rows 6-10 = this fiscal year .. +4
+  [data.fy - 1].concat(data.fiscalYears).forEach(function (fy, i) {
+    var r = 4 + i;
+    g[r][0] = i ? fy + '年度\n実施日' : '前回実施日';
+    for (var c = 0; c < 7; c++) g[r][c + 1] = jpDate_(latest_(data.cols[c].byFy[fy]));
+    if (i >= 3) g[r][7] = '－';          // 63歳: rows 8-10 are fixed "－" in the form
+    g[r][8] = expCell(data.cols[7], fy);
+    g[r][9] = expCell(data.cols[8], fy);
   });
   // rows 12-15
   g[11][0] = '航空英語能力証明書　有効期限';         g[11][2] = slots_(data.english, 2);
@@ -174,12 +240,13 @@ function planQualSheet_(data) {
 
 function apiRebuildQualSheet() { return rebuildQualSheet_(null, true); }
 
-function rebuildQualSheet_(all, force) {
+/** `today` (optional "yyyy-mm-dd") decides the fiscal-year rows; tests pass a fixed one. */
+function rebuildQualSheet_(all, force, today) {
   var ss = ss_();
   var sh = ss.getSheetByName(QUAL_SHEET);
   var isNew = !sh;
   if (isNew) sh = ss.insertSheet(QUAL_SHEET);
-  var data = qualSheetData_(all);
+  var data = qualSheetData_(all, today);
   var grid = planQualSheet_(data);
   var props = PropertiesService.getScriptProperties();
   var stamp = 'v' + QUAL_DESIGN_VERSION;
@@ -188,8 +255,9 @@ function rebuildQualSheet_(all, force) {
   if (!relayout) {
     sh.getRange(1, 1, QUAL_ROWS, QUAL_COLS).setValues(grid);
     sh.getRange(1, 12).setValue('更新 ' + data.today);
+    props.setProperty(QUAL_FY_KEY, String(data.fy));
     SpreadsheetApp.flush();
-    return { sheetName: QUAL_SHEET, relayout: false };
+    return { sheetName: QUAL_SHEET, relayout: false, fy: data.fy };
   }
 
   if (sh.getMaxColumns() < 12) sh.insertColumnsAfter(sh.getMaxColumns(), 12 - sh.getMaxColumns());
@@ -230,8 +298,7 @@ function rebuildQualSheet_(all, force) {
   sh.getRange(3, 4, 1, 2).merge();   // D3:E3
   [12, 13, 14, 15].forEach(function (r) { sh.getRange(r, 3, 1, 8).merge(); });   // C..J slots
   [17, 18, 21, 22, 23, 26, 27].forEach(function (r) { sh.getRange(r, 2, 1, 9).merge(); });
-  sh.getRange(19, 2, 2, 9).merge();  // B19:J20
-  sh.getRange(19, 1, 2, 1).merge();  // A19:A20 (M21 / M22 share the note)
+  sh.getRange(19, 2, 2, 9).merge();  // B19:J20 — M21 (A19) and M22 (A20) share the note
 
   // sizes
   QUAL_COL_PX.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
@@ -239,6 +306,50 @@ function rebuildQualSheet_(all, force) {
   sh.getRange(1, 12).setValue('更新 ' + data.today).setFontSize(8).setFontColor('#9aa0a6');
   sh.setFrozenRows(0);
   props.setProperty(QUAL_LAYOUT_KEY, stamp);
+  props.setProperty(QUAL_FY_KEY, String(data.fy));
   SpreadsheetApp.flush();
-  return { sheetName: QUAL_SHEET, relayout: true };
+  return { sheetName: QUAL_SHEET, relayout: true, fy: data.fy };
+}
+
+/* ---------- fiscal-year roll-over ---------- */
+
+/**
+ * Rebuild the checklist when the fiscal year changed since it was built (or it was never built with
+ * this code). `all` = sorted flights when the caller has them. Returns true if it rebuilt.
+ */
+function checkQualFiscalYear_(today, all) {
+  today = today ? parseDateStr_(today) : parseDateStr_(new Date());
+  var built = PropertiesService.getScriptProperties().getProperty(QUAL_FY_KEY);
+  if (built === String(fyOf_(today)) && ss_().getSheetByName(QUAL_SHEET)) return false;
+  rebuildQualSheet_(all || null, false, today);
+  return true;
+}
+
+/** Daily time-driven trigger: on the first run in April the table moves to the new fiscal year. */
+function qualFiscalYearTick() { checkQualFiscalYear_(); }
+
+/** Installs the daily trigger unless it exists. Returns true when it was created. */
+function ensureQualTrigger_() {
+  var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === QUAL_TICK_FN; });
+  if (has) return false;
+  ScriptApp.newTrigger(QUAL_TICK_FN).timeBased().everyDays(1).atHour(0).create();
+  return true;
+}
+
+/** apiBootstrap: re-create a missing trigger, checked at most every 6 hours. */
+function ensureQualTriggerCached_() {
+  var cache = CacheService.getScriptCache();
+  if (cache.get(QUAL_TRIGGER_CACHE)) return false;
+  var created = ensureQualTrigger_();
+  cache.put(QUAL_TRIGGER_CACHE, '1', 21600);
+  return created;
+}
+
+/** Spreadsheet menu (run once): grants the trigger permission and installs the daily trigger. */
+function setupQualFiscalYearTrigger() {
+  var created = ensureQualTrigger_();
+  checkQualFiscalYear_();
+  SpreadsheetApp.getUi().alert(created
+    ? '資格要件チェックリストの年度切替を自動化しました（毎日 0 時台に確認し、4 月 1 日に新年度の表へ更新します）。'
+    : '年度切替の自動更新は設定済みです。');
 }

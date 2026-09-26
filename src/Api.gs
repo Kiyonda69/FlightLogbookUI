@@ -56,6 +56,9 @@ function apiBootstrap() {
   var months = {};
   flights.forEach(function (f) { months[f.date.substring(0, 7)] = true; });
   var today = parseDateStr_(new Date());
+  // 資格要件チェックリスト: roll over to a new fiscal year, keep its daily trigger (never blocks the UI)
+  try { checkQualFiscalYear_(today, flights); } catch (e) { Logger.log('checklist fiscal-year check: ' + e); }
+  try { ensureQualTriggerCached_(); } catch (e) { Logger.log('checklist trigger: ' + e); }
   return {
     settings: getSettings_(),
     aircraft: getAircraftMaster_(),

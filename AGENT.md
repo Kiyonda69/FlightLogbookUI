@@ -32,7 +32,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 │   ├── Report.gs            年次 JCAB 様式シート「飛行日誌_YYYY」（12 か月ブロック、Numbers の年シート相当）を書き込みのたびに自動再生成
 │   ├── Import.gs            CSV / 繰越 JSON 取込（importCarryForwardFromDrive / importCarryForwardPrompt は引数なしでエディタ・メニューから実行可）
 │   ├── Crew.gs              CrewRules.html をサーバー側で評価 (loadCrewRules_, apiCrewPatterns, apiAllocateCrew)
-│   ├── Qual.gs              「資格要件チェックリスト」シート（CAP 様式 A1:J27 の再現）を飛行日誌と設定から自動更新
+│   ├── Qual.gs              「資格要件チェックリスト」シート（CAP 様式 A1:J27、利用者が調整したレイアウト）を飛行日誌と設定から自動更新、年度切替（日次トリガー）
 │   ├── CrewRules.html       【共有】編成パターン表 CREW_PATTERNS と allocateCrew()（UI とサーバーの唯一の正）
 │   ├── Index.html           UI マークアップ（タブ: 入力 / 一覧・編集 / 集計 / 設定・取込）
 │   ├── Style.html           CSS
@@ -96,7 +96,7 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 | source / created_at / updated_at | meta | 由来 (`ui` / `csv:...` / `numbers:...`) と時刻 |
 | crew | text | 編成コード `M2/0`（パターン id / 自分の位置）, `SPLIT`, `SIM`, 旧データは空。帳票には出さない |
 | qpr | text | QPR フライトなら `'1'`、それ以外は空（`normalizeFlight_` が true / 1 / yes / ○ を `'1'` に正規化）。帳票には出さず、資格要件チェックリスト シートの **ROUTE CHK 欄**（前回実施日・年度別実施日・基準月）と集計タブの「ROUTE CHK / QPR (年度)」に反映 |
-| sim_takeoffs / sim_landings | int | SIM/FTD セッションの離着陸回数（`SIM_COUNT_KEYS`）。**`takeoffs` / `landings` の合計には含めず別に集計**（ユーザー指示）。帳票の離着陸回数欄に `(1)` のように記入 |
+| sim_takeoffs / sim_landings | int | SIM/FTD セッションの離着陸回数（`SIM_COUNT_KEYS`）。**どの合計（項小計・前項までの合計・合計・累計・年計・直近 N 日）にも表示・加算しない。90 日の離着陸経験（資格要件）でだけ実機の回数に加算**（ユーザー指示 2026-09-26）。帳票では SIM レグの離着陸回数欄に `(1)` のように記入 |
 
 列を末尾に追加したときは `ensureFlightsHeader_`（`setupSpreadsheet` と書式修復が呼ぶほか、`readAllFlights_` / `writeFlightRows_` が列数不足を検知すると自動で呼ぶ）が既存シートに見出しとテキスト書式を追加する。コードを貼り直しただけで既存シートがそのまま使える（`qpr` 列追加時に確認）。
 
@@ -109,9 +109,9 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 - 飛行時間は `arr - dep`、日付跨ぎは +24h（Numbers 版の `G+(F>G)-F` と同じ）。
 - 役割時間 (pic, sic, …) は `block` を超えてはならない（`normalizeFlight_` が拒否）。
 - SIM/FTD セッションは `block = 0`, `takeoffs = landings = 0`, 登録記号は空でもよい（旧データに 11 行ある）。
-- SIM の離着陸回数は `sim_takeoffs` / `sim_landings` に入れる（`normalizeFlight_` が 0 以上の整数か、SIM/FTD セッション = 飛行時間 0 かを検査し、実飛行への入力は拒否）。`TOTAL_KEYS` には入れない: 集計オブジェクト（`zeroTotals_` / `addTotals_` / `sumTotals_`）は `TOTAL_KEYS + SIM_COUNT_KEYS` を足すので項小計・前項までの合計・合計・累計・年計・直近 N 日には `sim_*` が別キーとして載るが、`takeoffs` / `landings` には一切加算しない。繰越（`carry_forward_*`）は無し。90 日離着陸（資格要件）も実機の `landings` のみ。
-- 帳票の離陸・着陸列 (I:J) は **テキスト書式 `@`**（`countText_` が文字列を書く）。SIM レグは `(3)`、合計行は SIM 分があれば `2043 (12)` / `0 (3)`、無ければ `2043`。Sheets は `(1)` を数値 -1 と解釈するため `@` が必須（`dev/mock_gas.js` もこの変換を模擬）。列幅は `2043 (12)` が収まる 68px。UI（一覧・合計行・ヘッダー・集計）も同じ表記（`Script.html` の `cnt()`）。
-- Apps Script はファイルの評価順を保証しないので、トップレベルで他ファイルのグローバル（例: `TOTAL_KEYS`）を使った `var` 初期化をしない（`Totals.gs` の `summedKeys_()` は初回呼び出し時に作る）。
+- SIM の離着陸回数は `sim_takeoffs` / `sim_landings` に入れる（`normalizeFlight_` が 0 以上の整数か、SIM/FTD セッション = 飛行時間 0 かを検査し、実飛行への入力は拒否）。`TOTAL_KEYS` には入れない: 集計オブジェクト（`zeroTotals_` / `addTotals_` / `sumTotals_`）は `TOTAL_KEYS` だけを足すので、項小計・前項までの合計・合計・累計・年計・直近 N 日に `sim_*` は一切載らない（2026-09-25 版は別キーで `2043 (12)` と表示していたが、2026-09-26 のユーザー指示で廃止）。繰越（`carry_forward_*`）も無し。SIM の回数を使うのは `apiQualification` の 90 日離着陸経験だけで、実機の `takeoffs` / `landings` に加算する（`recency.simTakeoffs` / `simLandings` が内訳）。
+- 帳票の離陸・着陸列 (I:J) は **テキスト書式 `@`**（`countText_` が文字列を書く）。SIM レグは `(3)`、合計行は実機の回数だけ（`2043`）。Sheets は `(1)` を数値 -1 と解釈するため `@` が必須（`dev/mock_gas.js` もこの変換を模擬）。UI も同じ: 一覧のレグ行は `Script.html` の `cnt()`（SIM レグ `(3)`）、合計行・ヘッダー・集計は `tcnt()`（実機のみ）。
+- Apps Script はファイルの評価順を保証しないので、トップレベルで他ファイルのグローバル（例: `TOTAL_KEYS`）を使った `var` 初期化をしない（`Totals.gs` の集計関数は `TOTAL_KEYS` を関数の中で参照する）。
 - 帳票の 3 段合計:
   - 項小計 = 当月レグの合計
   - 前項までの合計 = `Settings` の `carry_forward_*` + 当月より前の全レグ
@@ -158,22 +158,28 @@ FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive
 根拠資料: 資格要件チェックリスト 2026.06.21RVS。飛行日誌から導けるものだけ自動判定し、それ以外は設定の有効期限入力で警告する。
 
 - 最終乗務日（block > 0 または着陸ありのレグ、SIM は除く）からの経過日数。連続 `QUAL_RETRAIN_DAYS`(60) 日以上で復帰訓練 → `over`、14 日前から `warn`。
-- 直近 `QUAL_RECENCY_DAYS`(90) 日の離陸・着陸回数（各 3 回未満で `over`）。
+- 直近 `QUAL_RECENCY_DAYS`(90) 日の離陸・着陸回数 = 実機 + SIM（各 3 回未満で `over`）。UI は「SIM a / b を含む」と内訳を添える。集計タブの「直近 N 日」カード（`apiRecency`）は合計なので SIM を含めない。
 - 訓練審査 M11/M12/M21/M22: 飛行内容がそのコードで始まるレグの最終日を前回実施日とし、次回基準月 = 前回 + 12 か月、実施期間 = 基準月 ±1 か月（`due`）、超過で `over`。M12 = 技能基準月、M21 = 基準月 + 6 か月という関係は表示のみ（それぞれ独立に前回 + 12 か月で判定）。
 - 有効期限（Settings `exp_pe`, `exp_pea`, `exp_english`, `exp_competency`, `exp_passport`, `exp_visa`）: 残日数と警告閾値（PE/PEA 45 日、英語・特定操縦技能 90 日、パスポート/VISA 180 日 = `QUAL_EXPIRIES`）。これらの設定変更では年次シートは再生成しない。
 - `apiQualification(today)` は `today` を省略可（テストでは固定日を渡す）。リスト型の期限（航空英語・特定操縦技能）は最新日付で判定。
 
 ### 資格要件チェックリスト シート（`Qual.gs`）
 
-- 原本 `資格_要件チェックリスト_20260621.xlsx` の **CAP** シート A1:J27 をセル単位で再現（文字列・結合 B3:C3, D3:E3, C12:J15 各行, B17:J27 各行 + B19:J20, A19:A20・列幅・行高・灰色 #C0C0C0 の見出し・太線/細線・配置・フォントサイズ 12/11/10/8）。注意事項の全文は `QUAL_NOTES`。見た目を変えたら `QUAL_DESIGN_VERSION` を上げる。
+- 原本 `資格_要件チェックリスト_20260621.xlsx` の **CAP** シート A1:J27 をセル単位で再現（文字列・結合 B3:C3, D3:E3, C12:J15 各行, B17:J27 各行 + B19:J20・灰色 #C0C0C0 の見出し・太線/細線・配置・フォントサイズ 12/11/10/8）。注意事項の全文は `QUAL_NOTES`。見た目を変えたら `QUAL_DESIGN_VERSION` を上げる（現在 4）。
+- **列幅・行高は利用者が本番シートで調整したもの**（2026-09-26 に Chrome で htmlview から実測: `QUAL_COL_PX` = A 231 / B〜G 148 / H 184 / I・J 274、`QUAL_ROW_PX` の行 4〜10 = 41）。xlsx の文字幅換算（C〜G 96 など）では日付が折り返してレイアウトが崩れていた。htmlview の `tr` の高さは実寸 −1px、列幅は実寸どおり。今後シートを手で直されたら同じ方法で読み取って定数に反映する。
+- M21（A19）と M22（A20）は別セル（原本どおり。v3 までは A19:A20 を誤って結合し M22 が消えていた）。注記 B19:J20 だけ結合。
 - 記入内容（`qualSheetData_` → `planQualSheet_`）:
   - D1 所属／社員番号／氏名 = Settings `department` / `employee_no` / `pilot_name`。
   - 行 3 基準月: `base_skill`（空なら最後の M12 または CACK の月）→ CACK/M12、+6 か月 → M21/M22、`base_route`、`base_dit`（空なら最後の実施日の月）、PE/PEA は有効期限の月。
-  - 行 5 前回実施日 = 各列の最新日付。行 6〜10 = 年度（4 月始まり）FY-1〜FY+3 の実施日（列 A に「2026年度／実施日」と年度を入れる）。H8:H10 は原本どおり「－」。
+  - 行 5 前回実施日 = **前年度（FY-1）** の実施日。行 6〜10 = **今年度〜4 年後（FY〜FY+4）** の実施日（列 A に「2026年度／実施日」）。紙の様式と同じ（2026 年度なら前回 = 2025 年度、2026〜2030 年度）。H8:H10 は原本どおり「－」。同じ年度に複数あれば最新。
+  - どの年度に数えるか（`entryFy_`）: 基準月の ±2 か月以内なら、その基準月が属する年度（実施月 = 基準月 −1〜+1。基準月 4 月の M12 を 3 月に実施、4 月期限の PE を 3 月に受検 → 翌年度側）。それ以外と、DIT（年度をまたぐ繰り上げ・繰り下げなし）・63 歳付加訓練は日付の年度。
+  - PE / PEA の有効期限（`pairExpiries_`）: `exp_pe` / `exp_pea` はカンマ区切りの複数可（設定画面もリスト入力）。各実施日に「90 日より後の最初の未使用の期限」（その受検で出た証明の期限）を対応させ、実施日の年度の行に「有効期限 … / 実施日 …」を出す。実施日の無い期限は、1 年の有効期間が始まった年度の行へ。集計タブの判定は従来どおり最新の期限。
   - M12/M21/M22 = 飛行内容がそのコードで始まるレグの日付。CACK = 飛行内容 CACK/M11 + `dates_cack`。ROUTE CHK/DIT = 飛行内容 ROUTE/DIT + `dates_route`/`dates_dit`。63 歳付加訓練/PE/PEA 実施日 = `dates_age63`/`dates_pe`/`dates_pea`。PE/PEA セルは「有効期限 … / 実施日 …」の 2 行。
   - 行 12〜15 = `exp_english`（最大 2）、`exp_competency`（最大 5）、`exp_passport`、`exp_visa` を「(1) 2027 / 03 / 31」形式で。日付リストはカンマ区切り（`dateList_` が不正値を捨てる）。
   - 空欄は原本のプレースホルダ文字列（「        年       月       日」等）をそのまま出す。
 - 更新タイミング: `refreshYearSheets_` の末尾（レグの追加・更新・削除・取込）と `apiSaveSettings`（すべての設定変更）。レイアウト済みなら値の `setValues` 1 回のみ（L1 に「更新 日付」）。メニュー「資格要件チェックリストを再生成」= `apiRebuildQualSheet()`（強制再構築）。
+- **年度切替**: 作成時の年度を Script Properties `qual_fy` に保存。`checkQualFiscalYear_` が現在の年度と違えば（またはシートが無ければ）再生成する。呼び出し元 = 日次の時間主導トリガー `qualFiscalYearTick`（毎日 0 時台、4/1 に新年度の表へ）、`apiBootstrap`（UI を開くたび。例外は握りつぶして UI を止めない）、`onOpen`（単純トリガーなので失敗しても無視）。
+- トリガーはメニュー「チェックリストの年度切替を自動化 (初回のみ)」= `setupQualFiscalYearTrigger` で作る。`apiBootstrap` も `ensureQualTriggerCached_`（6 時間キャッシュ）で無ければ作り直す。`ScriptApp` を使うため **プロジェクトに `script.scriptapp` スコープが加わった**: 所有者が一度承認するまで、新しいバージョンをデプロイした `/exec`（Pages 版）は「承認が必要」で失敗する。手順は **push のみ → スプレッドシートのメニューでこの項目を実行して承認 → Pages 用デプロイ更新** の順。
 - 印刷設定（横・1 ページ収まり）は API で設定できないので手動。
 
 ### Flights シート直接編集の検査（`src/Validate.gs`）

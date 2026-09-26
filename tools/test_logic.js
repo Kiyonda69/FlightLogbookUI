@@ -54,8 +54,7 @@ check('re-import skips duplicates', [res2.inserted, res2.skipped], [0, 860]);
 var expected = {
   takeoffs: 2043, landings: 2049, block: 772533, pic: 175593, solo_sic: 6965, pus: 103511,
   pic_xc: 280447, pic_night: 93530, sic: 457449, dual: 21594, sic_xc: 471807, sic_night: 180337,
-  hood: 4010, ifr: 133315, sim: 31475, ftd: 0, instructor: 0, flight_engineer: 0, other: 7421,
-  sim_takeoffs: 0, sim_landings: 0   // SIM counts are summed separately (none in the legacy data)
+  hood: 4010, ifr: 133315, sim: 31475, ftd: 0, instructor: 0, flight_engineer: 0, other: 7421
 };
 var m = ctx.apiGetMonth('2024-10');
 check('2024-10 leg count', m.flights.length, 7);
@@ -295,16 +294,16 @@ var qq = ctx.apiQualification('2025-12-01').qpr;
 check('qpr: FY2025 count 2, last = 2025-11-20 JL16', [qq.fy, qq.count, qq.last.date, qq.last.flight_no, qq.status], [2025, 2, '2025-11-20', 'JL16', 'ok']);
 check('qpr: FY2024 none → warn', ctx.apiQualification('2025-03-31').qpr.status, 'warn');
 var qsh = ctx.__mockSpreadsheet.getSheetByName(ctx.QUAL_SHEET);
-check('qual sheet: QPR legs fill ROUTE CHK 前回実施日 (row 5, col F)', qsh.rows[4][5], '2026年 4月 2日');
+ctx.rebuildQualSheet_(null, false, '2026-05-01');   // FY2026: 前回実施日 = 2025年度, rows 6-10 = 2026..2030年度
+check('qual sheet: 前回実施日 (row 5) = latest QPR of the previous fiscal year (2025年度)', qsh.rows[4][5], '2025年 11月 20日');
 check('qual sheet: ROUTE CHK 基準月 follows the latest QPR (4月)', qsh.rows[2][5], '4月');
-var routeFy = {}; for (var qi = 5; qi < 10; qi++) routeFy[qsh.rows[qi][0]] = qsh.rows[qi][5];
-check('qual sheet: 2025年度 ROUTE CHK = latest QPR of that FY', routeFy['2025年度\n実施日'], '2025年 11月 20日');
-check('qual sheet: 2026年度 ROUTE CHK', routeFy['2026年度\n実施日'], '2026年 4月 2日');
+check('qual sheet: 2026年度 ROUTE CHK (row 6)', [qsh.rows[5][0], qsh.rows[5][5]], ['2026年度\n実施日', '2026年 4月 2日']);
 check('qual sheet: still the 27-row CAP form (no extra block)', [ctx.QUAL_ROWS, qsh.rows.length <= 27 || qsh.rows.slice(27).every(function (r) { return r.every(function (c) { return c === '' || c === undefined; }); })], [27, true]);
 [q1, q2, q3, q4].forEach(function (f) { ctx.apiDeleteFlight(f.id); });
 check('qpr: cleanup', ctx.apiBootstrap().cumulative, before);
 
-// --- SIM take-offs / landings: stored in their own columns, summed separately, "(n)" on the report
+// --- SIM take-offs / landings: own columns, in NO total ("(n)" on the leg's report row);
+//     only the 90-day take-off / landing experience adds them to the real counts
 var simLeg = function (d, fn, to, ld) { return { date: d, aircraft_type: 'B77W', registration: '', dep: 'RJTT', arr: 'RJTT', flight_no: fn, sim: 240, crew: 'SIM', sim_takeoffs: to, sim_landings: ld }; };
 var s1 = ctx.apiAddFlight(simLeg('2025-06-10', 'M21', 3, '4')).flight;
 check('sim counts stored as numbers, real counts stay 0', [s1.sim_takeoffs, s1.sim_landings, s1.takeoffs, s1.landings], [3, 4, 0, 0]);
@@ -312,16 +311,22 @@ check('sim counts read back from the sheet', (function (f) { return [f.sim_takeo
 var s2 = ctx.apiSaveFlights([simLeg('2025-07-01', 'M22', 2, 2)]).flights[0];
 var cumSim = ctx.apiBootstrap().cumulative;
 check('sim counts NOT added to takeoffs / landings totals', [cumSim.takeoffs, cumSim.landings], [before.takeoffs, before.landings]);
-check('sim counts summed separately', [cumSim.sim_takeoffs, cumSim.sim_landings], [5, 6]);
+check('累計 carries no SIM counts', ['sim_takeoffs' in cumSim, 'sim_landings' in cumSim], [false, false]);
 var jul = ctx.apiGetMonth('2025-07').totals;
-check('month totals: 項小計 / 前項までの合計 / 合計 sim landings', [jul.subtotal.sim_landings, jul.carried.sim_landings, jul.total.sim_landings], [2, 4, 6]);
-check('year summary carries sim counts', ctx.apiYearSummary('2025').yearTotal.sim_takeoffs, 5);
+check('項小計 / 前項までの合計 / 合計 carry no SIM counts', ['subtotal', 'carried', 'total'].map(function (k) { return 'sim_landings' in jul[k]; }), [false, false, false]);
+check('month totals keep the real landings only', [jul.subtotal.landings, jul.carried.landings, jul.total.landings], [0, before.landings, before.landings]);
+check('年計 carries no SIM counts', 'sim_takeoffs' in ctx.apiYearSummary('2025').yearTotal, false);
+check('直近 N 日 carries no SIM counts', 'sim_takeoffs' in ctx.apiRecency(36500), false);
+var rec = ctx.apiQualification('2025-07-15').recency;
+check('90-day experience = real + SIM (take-offs 3+2, landings 4+2)', [rec.takeoffs, rec.landings, rec.simTakeoffs, rec.simLandings, rec.status], [5, 6, 5, 6, 'ok']);
+var rec2 = ctx.apiQualification('2025-09-20').recency;
+check('90-day experience: SIM session outside the window not counted', [rec2.takeoffs, rec2.landings, rec2.status], [2, 2, 'over']);
 var r25 = ctx.__mockSpreadsheet.getSheetByName('飛行日誌_2025').rows;
 var simRow = r25.filter(function (r) { return r[7] === 'M21'; })[0];
 check('report: SIM leg shows "(3)" / "(4)" as text (not -3)', [simRow[8], simRow[9]], ['(3)', '(4)']);
 var julIdx = r25.findIndex(function (r) { return r[0] === '7月'; });
 var julTot = r25.slice(julIdx).filter(function (r) { return /計/.test(String(r[7])); }).slice(0, 3);
-check('report: July 項小計 / 前項までの合計 / 合計 landings', julTot.map(function (r) { return r[9]; }), ['0 (2)', before.landings + ' (4)', before.landings + ' (6)']);
+check('report: July 項小計 / 前項までの合計 / 合計 landings = real counts only', julTot.map(function (r) { return r[9]; }), ['0', String(before.landings), String(before.landings)]);
 check('report: months without SIM counts keep the plain count', r25.filter(function (r) { return r[7] === '合  計'; })[0][8], String(before.takeoffs));
 var badSim = null; try { ctx.apiAddFlight({ date: '2025-06-11', aircraft_type: 'B77W', registration: 'JA742J', dep: 'RJTT', arr: 'RJOO', dep_time: '01:00', arr_time: '02:00', pic: 60, sim_landings: 1 }); } catch (e) { badSim = e.message; }
 check('sim counts rejected on a real flight', /SIM の離着陸回数/.test(badSim || ''), true);
@@ -411,16 +416,23 @@ check('qual sheet created by the import refresh', !!qs, true);
 check('qual sheet: 27 rows x 10 cols grid', [qs.rows.length >= 27, qs.rows[1].length >= 10], [true, true]);
 check('qual sheet: title', qs.rows[0][0], '資格 要件チェックリスト　for  CAP');
 check('qual sheet: header row', qs.rows[1], ['訓練審査', 'CACK', 'M12 ', 'M21 ', 'M22 ', 'ROUTE CHK', 'DIT', '63歳以上68歳未満付加訓練', 'PE', 'PEA（またはPE）']);
-check('qual sheet: 前回実施日 M12 / M21 / M22 from the logbook', [qs.rows[4][2], qs.rows[4][3], qs.rows[4][4]], ['2024年 4月 22日', '2024年 10月 24日', '2024年 10月 25日']);
+check('qual sheet: column widths as adjusted in the live sheet', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (c) { return qs.colWidths[c]; }), [231, 148, 148, 148, 148, 148, 148, 184, 274, 274]);
+check('qual sheet: rows 4-10 are 41 px', [4, 5, 6, 7, 8, 9, 10].map(function (r) { return qs.rowHeights[r]; }), [41, 41, 41, 41, 41, 41, 41]);
+check('qual sheet: M21 (A19) / M22 (A20) separate, note B19:J20 merged',
+  [qs.rows[18][0], qs.rows[19][0], qs.merges.some(function (m) { return m[0] === 19 && m[1] === 1; }), qs.merges.some(function (m) { return m.join() === '19,2,2,9'; })],
+  ['M21', 'M22', false, true]);
+ctx.rebuildQualSheet_(null, false, '2025-05-01');   // FY2025 → 前回実施日 = 2024年度
+check('qual sheet: 前回実施日 = 2024年度 M12 / M21 / M22 from the logbook', [qs.rows[4][2], qs.rows[4][3], qs.rows[4][4]], ['2024年 4月 22日', '2024年 10月 24日', '2024年 10月 25日']);
 check('qual sheet: CACK column includes M11 legs', qs.rows[4][1], '2024年 4月 21日');
+check('qual sheet: rows 5-10 = 前回実施日 (FY-1), FY .. FY+4', [4, 5, 6, 9].map(function (r) { return qs.rows[r][0]; }), ['前回実施日', '2025年度\n実施日', '2026年度\n実施日', '2029年度\n実施日']);
+check('qual sheet: this fiscal year still empty', qs.rows[5][2], '        年       月       日');
 check('monthLabel_ forms', [ctx.monthLabel_('2024-06-01'), ctx.monthLabel_('2026-04'), ctx.monthLabel_('7'), ctx.monthLabel_('11月'), ctx.monthLabel_('13'), ctx.monthLabel_('')], ['6月', '4月', '7月', '11月', '月', '月']);
 check('qual sheet: 基準月 derived from last M12 (4月) and +6 (10月)', [qs.rows[2][1], qs.rows[2][3]], ['4月', '10月']);
 check('qual sheet: blank placeholders keep the form text', qs.rows[4][5], '        年       月       日');
-var fy0 = (function () { var d = new Date(); return (d.getMonth() + 1 >= 4 ? d.getFullYear() : d.getFullYear() - 1) - 1; })();
-check('qual sheet: fiscal-year rows labelled FY-1..FY+3', [qs.rows[5][0], qs.rows[9][0]], [fy0 + '年度\n実施日', (fy0 + 4) + '年度\n実施日']);
-check('qual sheet: 63歳 rows 8-10 fixed "－"', [qs.rows[7][7], qs.rows[8][7], qs.rows[9][7]], ['－', '－', '－']);
+check('qual sheet: 63歳 rows 8-10 fixed "－", rows 5-7 open', [4, 5, 6, 7, 8, 9].map(function (r) { return qs.rows[r][7]; }),
+  ['        年       月       日', '        年       月       日', '        年       月       日', '－', '－', '－']);
 check('qual sheet: notes block', [qs.rows[16][0], qs.rows[17][1], qs.rows[26][0]], ['CACK', '技能基準月と同月', '特定操縦技能\n審査/確認']);
-check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows, A19:A20)', qs.merges.length, 2 + 4 + 8 + 1);
+check('qual sheet: merges (B3:C3, D3:E3, 4 slot rows, 8 note rows)', qs.merges.length, 2 + 4 + 8);
 check('qual sheet: column widths set', Object.keys(qs.colWidths).length, 10);
 var qMerges = qs.merges.length, qBorders = qs.borderCalls.length;
 ctx.apiSaveSettings({ department: '777運航乗員部', employee_no: '123456', exp_english: '2027-03-31, 2030-01-01', dates_route: '2024-06-01', exp_pe: '2026-12-15', dates_pe: '2026-06-10' });
@@ -428,8 +440,10 @@ qs = ctx.__mockSpreadsheet.getSheetByName('資格要件チェックリスト');
 check('qual sheet: settings change refreshes values only (fast path)', [qs.merges.length, qs.borderCalls.length], [qMerges, qBorders]);
 check('qual sheet: 所属 / 社員番号 / 氏名 line', qs.rows[0][3].indexOf('所属：777運航乗員部') === 0 && qs.rows[0][3].indexOf('社員番号：123456') > 0, true);
 check('qual sheet: 航空英語 slots', qs.rows[11][2], '　(1) 2027 / 03 / 31　　(2) 2030 / 01 / 01');
-check('qual sheet: ROUTE CHK date + 基準月', [qs.rows[4][5], qs.rows[2][5]], ['2024年 6月 1日', '6月']);
-check('qual sheet: PE 有効期限 + 実施日 cell', qs.rows[4][8], '有効期限 2026年 12月 15日\n実施日 2026年 6月 10日');
+ctx.rebuildQualSheet_(null, false, '2025-05-01');
+check('qual sheet: ROUTE CHK date (前回 = 2024年度) + 基準月', [qs.rows[4][5], qs.rows[2][5]], ['2024年 6月 1日', '6月']);
+ctx.rebuildQualSheet_(null, false, '2026-09-26');
+check('qual sheet: PE 有効期限 + 実施日 cell (2026年度)', qs.rows[5][8], '有効期限 2026年 12月 15日\n実施日 2026年 6月 10日');
 check('qual sheet: PE 基準月 = expiry month', qs.rows[2][8], '12月');
 check('apiQualification uses the latest date of a list', ctx.apiQualification('2026-09-21').expiries.filter(function (e) { return e.key === 'exp_english'; })[0].date, '2030-01-01');
 check('forced rebuild restyles', ctx.apiRebuildQualSheet().relayout, true);
@@ -446,6 +460,45 @@ check('apiQualification: passport status from a Date cell', ctx.apiQualification
 ctx.apiSaveSettings({ exp_passport: '', exp_visa: '' });
 ctx.apiSaveSettings({ department: '', employee_no: '', exp_english: '', dates_route: '', exp_pe: '', dates_pe: '' });
 check('dateList_ tolerates junk', ctx.dateList_('2026-01-05, abc, 2025/3/1'), ['2025-03-01', '2026-01-05']);
+
+// --- checklist: which fiscal year an entry counts for, PE / PEA expiries per year
+check('entryFy_: base month ±2 decides the fiscal year, else the date',
+  [ctx.entryFy_('2026-03-02', 4), ctx.entryFy_('2026-05-20', 4), ctx.entryFy_('2025-11-20', 4), ctx.entryFy_('2027-04-05', 3), ctx.entryFy_('2026-03-02', 0)],
+  [2026, 2026, 2025, 2026, 2025]);
+check('pairExpiries_: exam → the expiry > 90 days after it; unpaired expiry → year its validity began',
+  [ctx.pairExpiries_(['2025-03-03', '2026-03-02'], ['2026-04-07', '2027-04-07'], 4), ctx.pairExpiries_([], ['2027-04-07'], 4), ctx.pairExpiries_(['2026-03-02'], [], 4)],
+  [{ 2025: '2026-04-07', 2026: '2027-04-07' }, { 2026: '2027-04-07' }, {}]);
+ctx.apiSaveSettings({ base_skill: '4', dates_pe: '2025-03-03, 2026-03-02', exp_pe: '2026-04-07, 2027-04-07', dates_pea: '2026-09-18', exp_pea: '2027-09-30' });
+var m12Early = ctx.apiAddFlight({ date: '2026-03-20', aircraft_type: 'B77W', registration: '', dep: 'RJTT', arr: 'RJTT', flight_no: 'M12', sim: 240, crew: 'SIM' }).flight;
+ctx.rebuildQualSheet_(null, false, '2026-09-26');
+check('checklist: M12 done in March for the April base month counts for 2026年度', [qs.rows[4][2], qs.rows[5][2]], ['        年       月       日', '2026年 3月 20日']);
+check('checklist: PE taken before the April expiry → that April\'s year (前回 = 2025年度, 2026年度)',
+  [qs.rows[4][8], qs.rows[5][8], qs.rows[2][8]], ['有効期限 2026年 4月 7日\n実施日 2025年 3月 3日', '有効期限 2027年 4月 7日\n実施日 2026年 3月 2日', '4月']);
+check('checklist: PEA 2026年度, 前回 blank', [qs.rows[5][9], qs.rows[4][9]], ['有効期限 2027年 9月 30日\n実施日 2026年 9月 18日', ctx.QUAL_EXP_BLANK]);
+check('apiQualification: PE list → latest expiry in force', ctx.apiQualification('2026-09-26').expiries.filter(function (e) { return e.key === 'exp_pe'; })[0].date, '2027-04-07');
+ctx.apiDeleteFlight(m12Early.id);
+ctx.apiSaveSettings({ base_skill: '', dates_pe: '', exp_pe: '', dates_pea: '', exp_pea: '' });
+
+// --- checklist: fiscal-year roll-over (Script Properties qual_fy) and its daily trigger
+var props = ctx.PropertiesService.getScriptProperties();
+ctx.rebuildQualSheet_(null, false, '2027-03-31');
+check('qual_fy = fiscal year the sheet was built for', props.getProperty('qual_fy'), '2026');
+check('same fiscal year → no rebuild', ctx.checkQualFiscalYear_('2027-03-31'), false);
+check('1 April → rebuilt for the new fiscal year',
+  [ctx.checkQualFiscalYear_('2027-04-01'), props.getProperty('qual_fy'), qs.rows[4][0], qs.rows[5][0], qs.rows[9][0]],
+  [true, '2027', '前回実施日', '2027年度\n実施日', '2031年度\n実施日']);
+check('missing sheet is rebuilt too', (function () { ctx.__mockSpreadsheet.deleteSheet(qs); var r = ctx.checkQualFiscalYear_('2027-04-02'); qs = ctx.__mockSpreadsheet.getSheetByName(ctx.QUAL_SHEET); return [r, !!qs]; })(), [true, true]);
+props.setProperty('qual_fy', '2020');
+ctx.apiBootstrap();
+check('apiBootstrap rolls the sheet over to the current fiscal year', props.getProperty('qual_fy'), String((function () { var d = new Date(); return d.getMonth() + 1 >= 4 ? d.getFullYear() : d.getFullYear() - 1; })()));
+check('apiBootstrap installed the daily trigger once', ctx.__mockTriggers.filter(function (t) { return t.getHandlerFunction() === 'qualFiscalYearTick'; }).length, 1);
+ctx.__mockTriggers.splice(0);
+check('ensureQualTrigger_ creates it only once', [ctx.ensureQualTrigger_(), ctx.ensureQualTrigger_()], [true, false]);
+check('trigger: every day at 0 h → qualFiscalYearTick', ctx.__mockTriggers[0].spec, { handler: 'qualFiscalYearTick', everyDays: 1, atHour: 0 });
+ctx.__mockAlerts.length = 0; ctx.setupQualFiscalYearTrigger();
+check('menu: already set up → says so', /設定済み/.test(String(ctx.__mockAlerts[0])), true);
+props.setProperty('qual_fy', '2020'); ctx.qualFiscalYearTick();
+check('qualFiscalYearTick rebuilds on a fiscal-year change', props.getProperty('qual_fy') !== '2020', true);
 
 // --- JSON API (doPost) used by the GitHub Pages front-end
 function post(obj) { return JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(obj) } }).getContent()); }

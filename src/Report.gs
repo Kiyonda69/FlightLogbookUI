@@ -23,8 +23,9 @@
  *
  * Text-like values (月日 "5.30", clocks "23:40") go into cells whose number format is set to text
  * ('@') BEFORE the values are written; otherwise Sheets converts "5.30" into the number 5.3.
- * The 離陸 / 着陸 columns are text for the same reason: SIM counts are written in parentheses
- * ("(1)" on a SIM leg, "2043 (12)" on a total row) and Sheets would read "(1)" as the number -1.
+ * The 離陸 / 着陸 columns are text for the same reason: a SIM leg's counts are written in parentheses
+ * ("(1)") and Sheets would read "(1)" as the number -1. Total rows carry the real counts only
+ * (SIM counts are never part of 項小計 / 前項までの合計 / 合計).
  */
 
 var REPORT_MIN_ROWS = 15;      // blank rows to pad each month block to
@@ -42,7 +43,7 @@ var REPORT_HEADER_ROW_HEIGHT = 34;
 var REPORT_ROW_HEIGHT = 21;
 var REPORT_COL_WIDTHS = [
   42, 44, 60, 46, 46, 52, 52, 84,   // 月日 型式 登録記号 出発地 到着地 出発時刻 到着時刻 飛行内容
-  68, 68, 76,                       // 離陸 着陸 (room for "2043 (12)") 飛行時間
+  68, 68, 76,                       // 離陸 着陸 飛行時間
   66, 150, 118, 66, 66,             // 機長 単独・副機長 PUS 野外 夜間
   66, 66, 66, 66,                   // 副操縦士 同乗教育 野外 夜間
   66, 100,                          // フード 計器飛行
@@ -211,7 +212,7 @@ function planYear_(year, all) {
       row[7] = label[k];
       TOTAL_KEYS.forEach(function (key, idx) {
         var v = totals[k][key];
-        row[8 + idx] = SIM_COUNT_OF[key] ? countText_(v, totals[k][SIM_COUNT_OF[key]], true) : v / 1440;
+        row[8 + idx] = SIM_COUNT_OF[key] ? String(v) : v / 1440;   // counts: text column, real only
       });
       grid.push(row);
     });
@@ -263,19 +264,16 @@ function reportCell_(f, key) {
   var col = FLIGHT_COLUMNS[colIndex_(key)];
   if (key === 'date') { var p = f.date.split('-'); return parseInt(p[1], 10) + '.' + p[2]; }
   if (col.kind === 'min') return f[key] ? f[key] / 1440 : '';
-  if (SIM_COUNT_OF[key]) return countText_(f[key], f[SIM_COUNT_OF[key]], false);
+  if (SIM_COUNT_OF[key]) return countText_(f[key], f[SIM_COUNT_OF[key]]);
   if (col.kind === 'int') return f[key];
   return f[key] || '';
 }
 
-/**
- * 離陸 / 着陸 cell text: the real count, with the SIM count in parentheses when there is one.
- * A SIM leg shows only "(1)"; a total row keeps the real count ("0 (3)", "2043 (12)").
- */
-function countText_(n, sim, keepZero) {
+/** 離陸 / 着陸 cell text of one leg: the real count, or the SIM count in parentheses on a SIM leg ("(1)"). */
+function countText_(n, sim) {
   n = Number(n) || 0; sim = Number(sim) || 0;
   if (!sim) return String(n);
-  return (n || keepZero ? n + ' ' : '') + '(' + sim + ')';
+  return (n ? n + ' ' : '') + '(' + sim + ')';
 }
 
 /** Existing year sheets, newest first. */
