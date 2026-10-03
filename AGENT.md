@@ -8,14 +8,14 @@
 - スプレッドシートは DB 兼帳票出力先。ロジックは Apps Script。UI は 2 系統あり、どちらも同じ `src/Index.html` + `Script.html` から作られる:
   1. **HtmlService 版** — Apps Script の `/exec` URL をそのまま開く（`google.script.run` で呼ぶ）。
   2. **GitHub Pages 版** — `docs/index.html`（`tools/build_pages.py` の生成物）。`google.script.run` を fetch のシムに差し替え、Apps Script の `doPost` JSON API を呼ぶ。
-- 旧データは Apple Numbers ファイル `../FLIGHT LOGBOOK.numbers`（リポジトリの 1 階層上、2017-08 〜 2024-10、860 レグ）。`tools/export_numbers.py` で CSV 化し、Web UI から取り込む。
+- 旧データは Apple Numbers ファイル `data/FLIGHT LOGBOOK.numbers`（`data/` に置く。git 管理外。2017-08 〜 2024-10、860 レグ）。`tools/export_numbers.py` で CSV 化し、Web UI から取り込む。
 - 利用者は B777 (B772 / B773 / B77W) 乗務のエアラインパイロット 1 名。時刻は **UTC**。
 - GitHub: `https://github.com/Kiyonda69/FlightLogbookUI`（main ブランチ、Pages は `/docs`）。
 
 ## 2. ディレクトリ構成
 
 ```
-FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive/Documents/FlightLogbook/FlightLogbookUI）
+FlightLogbookUI/                    ← git リポジトリ（実体は OneDrive/Documents/KS_APP_STUDIO/FlightLogbookUI）
 ├── AGENT.md                 このファイル
 ├── README.md                利用者向けセットアップ手順
 ├── LICENSE                  MIT（GitHub 生成）
@@ -204,8 +204,8 @@ python tools/export_numbers.py "FLIGHT LOGBOOK.numbers"
 # 2. サーバーロジックの回帰テスト（Apps Script 不要）
 node tools/test_logic.js        # ALL PASSED が出ること。期待値は「初回 Numbers (860 レグ, 〜2024-10)」の合計行に固定
 #   → data/flights_test.csv / data/carry_forward_test.json（git 管理外の固定フィクスチャ）を使う。無ければ次で再生成:
-python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers" --tag test
-#   運用データ (data/flights.csv) は "../FLIGHT LOGBOOK 2.numbers" 以降の最新エクスポートで、テストには使わない
+python tools/export_numbers.py "data/FLIGHT LOGBOOK.numbers" --tag test
+#   運用データ (data/flights.csv) は "data/FLIGHT LOGBOOK 2.numbers" 以降の最新エクスポートで、テストには使わない
 
 # 3. UI をローカルで動かす（google.script.run をモックに差し替え、CSV を自動投入）
 python dev/serve.py 8765        # → http://localhost:8765/        HtmlService 版
@@ -255,7 +255,7 @@ python tools/build_pages.py
 
 ## 6. やってはいけないこと
 
-- `../FLIGHT LOGBOOK.numbers` を書き換える・移動する。
+- `data/FLIGHT LOGBOOK.numbers` を書き換える・移動する。
 - `docs/index.html` を直接編集する（`src/` を直して `tools/build_pages.py` で再生成）。
 - `data/` や `*.numbers`、API パスワードをコミットする（`.gitignore` 済み。リポジトリは公開の可能性がある）。
 - `Script.html` に `google.script.run` 以外のサーバー呼び出し手段を持ち込む（両 UI の互換が崩れる）。

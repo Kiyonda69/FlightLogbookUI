@@ -18,7 +18,7 @@ Apple Numbers で管理していた飛行日誌を、Google スプレッドシ�
 
 ```bash
 pip install numbers-parser
-python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers"
+python tools/export_numbers.py "data/FLIGHT LOGBOOK.numbers"
 ```
 
 `data/flights.csv`（全レグ）と `data/carry_forward.json`（CSV 先頭より前の累計 = 2017年8月の「前項までの合計」）ができます。
@@ -141,10 +141,10 @@ node dev/api_server.js 8766  # 静的版 UI 用のローカル API（http://loca
 python tools/build_pages.py  # docs/index.html を再生成
 ```
 
-旧 Numbers ファイルはリポジトリの 1 つ上の階層（`../FLIGHT LOGBOOK.numbers`）に置く想定です:
+旧 Numbers ファイルは `data/`（git 管理外）に置く想定です（`data/FLIGHT LOGBOOK.numbers`）:
 
 ```bash
-python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers"
+python tools/export_numbers.py "data/FLIGHT LOGBOOK.numbers"
 ```
 
 詳細は [AGENT.md](AGENT.md)。

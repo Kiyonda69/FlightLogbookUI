@@ -8,8 +8,8 @@ Output:
 
 Usage:
   pip install numbers-parser
-  python tools/export_numbers.py "../FLIGHT LOGBOOK 2.numbers"              -> data/flights.csv, data/carry_forward.json
-  python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers" --tag test     -> data/flights_test.csv, data/carry_forward_test.json
+  python tools/export_numbers.py "data/FLIGHT LOGBOOK 2.numbers"              -> data/flights.csv, data/carry_forward.json
+  python tools/export_numbers.py "data/FLIGHT LOGBOOK.numbers" --tag test     -> data/flights_test.csv, data/carry_forward_test.json
                                                                               (fixture used by tools/test_logic.js)
 """
 import csv, json, re, sys, datetime, warnings
@@ -135,4 +135,4 @@ def main(path, tag=""):
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     tag = sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv else ""
-    main(args[0] if args else "../FLIGHT LOGBOOK.numbers", tag)
+    main(args[0] if args else "data/FLIGHT LOGBOOK.numbers", tag)

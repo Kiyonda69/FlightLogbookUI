@@ -37,7 +37,7 @@ check('parseClock "2360" rejected', (function () { try { ctx.parseClock_('2360')
 check('setupSpreadsheet', ctx.setupSpreadsheet(), 'OK');
 // Fixture: the ORIGINAL export of FLIGHT LOGBOOK.numbers (860 legs, through 2024-10). The expected
 // totals below are that file's 2024/10 合計 row. Regenerate with:
-//   python tools/export_numbers.py "../FLIGHT LOGBOOK.numbers" --tag test
+//   python tools/export_numbers.py "data/FLIGHT LOGBOOK.numbers" --tag test
 var CSV_FILE = fs.existsSync(path.join(root, 'data/flights_test.csv')) ? 'data/flights_test.csv' : 'data/flights.csv';
 var CARRY_FILE = fs.existsSync(path.join(root, 'data/carry_forward_test.json')) ? 'data/carry_forward_test.json' : 'data/carry_forward.json';
 console.log('fixture:', CSV_FILE, '+', CARRY_FILE);
