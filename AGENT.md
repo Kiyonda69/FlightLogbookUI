@@ -15,7 +15,7 @@
 ## 2. ディレクトリ構成
 
 ```
-FlightLogbookUI/                    ← git リポジトリ（実体は C:SERSGAWABKS_APP_STUDIOFLIGHTLOGBOOKUIÀ�2026-10-04 Á� ONEDRIVE Á�Ť�Á�ǧ�Á�Á�）
+FlightLogbookUI/                    ← git リポジトリ（実体は C:\Users\gawab\KS_APP_STUDIO\FlightLogbookUI。2026-10-04 に OneDrive の外へ移した）
 ├── AGENT.md                 このファイル
 ├── README.md                利用者向けセットアップ手順
 ├── LICENSE                  MIT（GitHub 生成）
